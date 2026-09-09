@@ -1,0 +1,281 @@
+#%%
+# ============================================================
+# IMPORTS Y CARGA DEL PARQUET GENERADO EN EL SCRIPT 1
+# ============================================================
+import pandas as pd
+from pathlib import Path
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set_theme(style="whitegrid")
+
+CARPETA_OUTPUT = Path(r"C:\Users\f\Downloads\ADD 1\TALLER ANÁLISIS DE DATOS - PRECIOS VIAJES\output")
+RUTA_PARQUET = CARPETA_OUTPUT / "rndc_tipificado.parquet"
+
+df = pd.read_parquet(RUTA_PARQUET)
+print(f"Leído: {len(df):,} filas, {df.shape[1]} columnas")
+print(df.dtypes)
+
+def mostrar(tabla, titulo=None):
+    """Imprime una tabla de pandas con un título opcional."""
+    # "titulo=None" significa que el título es opcional: si no lo pasas, vale None (nada).
+    if titulo:                          # si sí me pasaron un título...
+        print(f"\n===== {titulo} =====")  # ...lo imprimo. \n es un salto de línea.
+    print(tabla.to_string())            # .to_string() convierte la tabla a texto completo, sin recortar filas.
+
+#%%
+# ============================================================
+# NULOS: imputar mercancía por código, eliminar el resto
+# ============================================================
+
+# --- 1. Catálogo codmercancia -> mercancia y verificación de que es 1:1
+catalogo = df[["codmercancia", "mercancia"]].dropna().drop_duplicates()
+conflictos = catalogo["codmercancia"].duplicated().sum()
+assert conflictos == 0, f"{conflictos} códigos de mercancía tienen más de un nombre; revisar antes de imputar"
+cat_mercancia = catalogo.set_index("codmercancia")["mercancia"].to_dict()
+
+# --- 2. Imputación
+faltantes = df["mercancia"].isna()
+df.loc[faltantes, "mercancia"] = df.loc[faltantes, "codmercancia"].map(cat_mercancia)
+recuperados = faltantes.sum() - df["mercancia"].isna().sum()
+print(f"Mercancía imputada por código: {recuperados:,} de {faltantes.sum():,} nulos")
+
+# --- 3. Eliminación de filas con nulos restantes
+antes = len(df)
+df = df.dropna()
+print(f"Registros eliminados por nulos: {antes - len(df):,}")
+print(f"Registros finales: {len(df):,}")
+
+
+#PRIMER FILTRO APLICADO METODOLOGICAMENTE, SE DEBE APLICAR ANTES DE CUALQUIER ANÁLISIS, YA QUE SON REGISTROS QUE NO TIENEN SENTIDO PARA EL ANÁLISIS DE PRECIOS DE VIAJES.
+#%%
+filtro = (
+    (df["viajestotales"] == 1)
+    & (df["valorespagados"] > 10_000)
+    & (df["kilometros"] > 10)
+)
+
+n_filtrados = filtro.sum()
+print(f"TOTAL DE REGISTROS CON viajestotales == 1, valorespagados > 10.000 y kilometros > 10: "
+      f"{n_filtrados:,} de {len(df):,} ({n_filtrados / len(df):.1%})")
+
+df = df[filtro].copy()
+print(f"FILTRO METODOLÓGICO: se conservan {len(df):,} de {antes:,} registros "
+      f"({len(df) / antes:.1%}); eliminados {antes - len(df):,}")
+
+
+
+#SEGUNDO FILTRO APLICADO: SE TRABAJA SÓLO CON REGISTROS DE VIAJES CON MERCANCÍA SÓLIDA. 
+# SEGUNDO FILTRO: análisis por kilogramos. Se conserva solo carga con kilos > 0;
+# esto excluye carga exclusivamente líquida (galones sin kilos) y registros sin carga.
+# %%
+mostrar(
+    pd.crosstab(df["galones"] > 0, df["kilogramos"] > 0,
+                rownames=["galones > 0"], colnames=["kilogramos > 0"]),
+    "CRUCE GALONES vs KILOGRAMOS",
+)
+#%%
+
+antes = len(df)
+df = df[df["kilogramos"] > 0].copy()
+print(f"FILTRO KILOGRAMOS: se conservan {len(df):,} de {antes:,}; eliminados {antes - len(df):,}")
+#%%
+# ============================================================
+# SELECCIÓN DE VARIABLES PARA EL MODELO (Y = valorespagados)
+# ============================================================
+COLS_ELIMINAR = [
+    # --- Sin variación tras los filtros aplicados ---
+    "a_o",               # un solo valor (2015): una constante no puede explicar variación en Y
+    "viajestotales",     # constante = 1 tras el filtro de viaje único
+    "viajesliquidos",    # constante = 0 tras filtrar por kilogramos > 0
+    "viajesvalorcero",   # constante = 0 tras filtrar valorespagados > 10.000
+    "galones",           # ≈ 0 en casi todos los registros tras filtrar por kilos; el residuo es ruido
+
+    # --- Redundantes: código y nombre son la misma información. Se conserva el nombre
+    #     por interpretabilidad; tener ambos genera colinealidad perfecta ---
+    "cod_config_vehiculo",      # duplica config_vehiculo
+    "codoperaciontransporte",   # duplica operaciontransporte
+    "codmunicipioorigen",       # duplica municipioorigen
+    "codmunicipiodestino",      # duplica municipiodestino
+    "codmercancia",             # duplica mercancia
+
+    # --- Alta cardinalidad: informativas pero inmanejables en una primera versión.
+    #     Se reemplazan por su versión agregada (departamento, naturalezacarga) ---
+    "municipioorigen",    # 1.886 niveles → se usa departamentoorigen (32)
+    "municipiodestino",   # 2.791 niveles → se usa departamentodestino (33)
+    "mercancia",          # 1.223 niveles → se usa naturalezacarga (8)
+]
+
+df_modelo = df.drop(columns=COLS_ELIMINAR)
+print(f"Variables para el modelo ({df_modelo.shape[1]}): {list(df_modelo.columns)}")
+#%%
+# ============================================================
+# FUNCIONES DE EXPLORACIÓN (adaptadas a una sola base: df_modelo)
+# ============================================================
+
+def tabla_atipicos(datos, variables, k=1.5):
+    """Atípicos por rango intercuartílico. k=1.5 estándar, k=3 solo extremos."""
+    filas = []
+    for v in variables:
+        q1, q3 = datos[v].quantile([0.25, 0.75])
+        iqr = q3 - q1
+        li, ls = q1 - k * iqr, q3 + k * iqr
+        n_atip = ((datos[v] < li) | (datos[v] > ls)).sum()
+        filas.append({
+            "Variable": v, "Q1": q1, "Q3": q3, "IQR": iqr,
+            "Limite inferior": li, "Limite superior": ls,
+            "Cantidad atipicos": n_atip,
+            "Porcentaje atipicos": n_atip / len(datos) * 100,
+        })
+    return pd.DataFrame(filas)
+
+
+def tabla_cardinalidad(datos):
+    """Número de categorías distintas por columna de texto."""
+    cols = datos.select_dtypes(include=["object", "category", "string"]).columns
+    return (
+        pd.DataFrame({"Variable": cols, "Categorias_Unicas": [datos[c].nunique() for c in cols]})
+        .sort_values("Categorias_Unicas", ascending=False)
+    )
+
+
+def graficar_relaciones(datos, n_muestra=50_000):
+    """Dispersión km vs valor y kg vs valor, más correlación de Spearman."""
+    muestra = datos.sample(n=min(n_muestra, len(datos)), random_state=42)
+
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    sns.scatterplot(data=muestra, x="kilometros", y="valorespagados", alpha=0.3, color="b", ax=axes[0])
+    axes[0].set(title="Distancia (km) vs. Valor Pagado ($)", xlabel="Kilómetros", ylabel="Valor Pagado ($)")
+
+    sns.scatterplot(data=muestra, x="kilogramos", y="valorespagados", alpha=0.3, color="g", ax=axes[1])
+    axes[1].set(title="Peso (kg) vs. Valor Pagado ($)", xlabel="Peso (kg)", ylabel="Valor Pagado ($)")
+
+    plt.tight_layout()
+    plt.show()
+
+    corr = muestra[["valorespagados", "kilometros", "kilogramos"]].corr(method="spearman")
+    mostrar(corr, "Correlación de Spearman")
+
+
+def graficar_categoricas(datos):
+    """Boxplots para categóricas de pocos niveles; top 15 para las de muchos."""
+    # ----- Pocas categorías: boxplots -----
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    for ax, col, titulo in zip(
+        axes,
+        ["operaciontransporte", "naturalezacarga", "config_vehiculo"],
+        ["Operación de Transporte", "Naturaleza de Carga", "Configuración de Vehículo"],
+    ):
+        sns.boxplot(data=datos, x=col, y="valorespagados", hue=col, legend=False, palette="Set2", ax=ax)
+        ax.set(title=f"Flete por {titulo}", xlabel=titulo, ylabel="Valor Pagado ($)")
+        ax.tick_params(axis="x", rotation=45)
+    plt.tight_layout()
+    plt.show()
+
+    # ----- Muchas categorías: top 15 por frecuencia, con mediana del flete -----
+    datos = datos.assign(
+        ruta_dpto=datos["departamentoorigen"] + " -> " + datos["departamentodestino"]
+    )
+    for col, titulo in [("ruta_dpto", "Rutas por departamento (Origen -> Destino)"),
+                        ("departamentodestino", "Departamentos destino")]:
+        top = (
+            datos.groupby(col)["valorespagados"]
+            .agg(conteo="count", flete_mediano="median")
+            .nlargest(15, "conteo")
+            .reset_index()
+        )
+        plt.figure(figsize=(12, 6))
+        sns.barplot(data=top, x="flete_mediano", y=col, hue=col, legend=False, palette="viridis")
+        plt.title(f"Top 15 {titulo} más frecuentes: mediana del flete ($)")
+        plt.xlabel("Mediana de Valor Pagado ($)")
+        plt.ylabel(titulo)
+        plt.tight_layout()
+        plt.show()
+
+
+#%%
+# ============================================================
+#DATOS ATIPICOS A PARTIR DEL ANALISIS DE IQR
+# # ============================================================
+VARS_NUM = ["kilogramos", "kilometros", "valorespagados"]
+
+mostrar(df_modelo[VARS_NUM].describe().T, "DESCRIPTIVOS")
+mostrar(tabla_atipicos(df_modelo, VARS_NUM, k=1.5), "ATÍPICOS 1.5*IQR")
+mostrar(tabla_atipicos(df_modelo, VARS_NUM, k=3), "ATÍPICOS 3*IQR")
+mostrar(tabla_cardinalidad(df_modelo), "CARDINALIDAD")
+print(f"\nColumnas ({df_modelo.shape[1]}): {df_modelo.columns.tolist()}")
+
+graficar_relaciones(df_modelo)
+graficar_categoricas(df_modelo)
+
+#%%
+# --- Kilogramos fuera de rango físico ---
+print("kg < 100:",     (df_modelo["kilogramos"] < 100).sum())
+print("kg > 52.000:",  (df_modelo["kilogramos"] > 52_000).sum())
+
+# --- Tarifa por km y por tonelada-km ---
+tmp = df_modelo.assign(
+    valor_por_km    = df_modelo["valorespagados"] / df_modelo["kilometros"],
+    valor_por_tonkm = df_modelo["valorespagados"] / (df_modelo["kilogramos"] / 1000 * df_modelo["kilometros"]),
+)
+mostrar(tmp[["valor_por_km", "valor_por_tonkm"]].describe(percentiles=[.01, .05, .5, .95, .99]).T,
+        "TARIFAS DERIVADAS")
+mostrar(tabla_atipicos(tmp, ["valor_por_km", "valor_por_tonkm"], k=3), "ATÍPICOS 3*IQR TARIFAS")
+#%%
+livianos = df_modelo[df_modelo["kilogramos"] < 100]
+mostrar(livianos["kilogramos"].describe(percentiles=[.25, .5, .75, .9]), "kg < 100: distribución")
+mostrar(livianos["config_vehiculo"].value_counts().head(10), "kg < 100: vehículos más frecuentes")
+mostrar(livianos["kilogramos"].value_counts().head(15), "kg < 100: valores más repetidos")
+# %%
+df_modelo["config_vehiculo"].value_counts()
+
+#%%
+# ============================================================
+# FILTROS DE CALIDAD SOBRE df_modelo
+# ============================================================
+
+# --- 1. Kilogramos: peso bruto vehicular máximo (PBV) por configuración, según MinTransporte
+pbv_max = {
+    "Camión Rígido de 2 ejes": 17000,
+    "Camión Rígido de 3 ejes": 28000,
+    "Tractocamión de 2 ejes Semiremolque de 1 Eje": 27000,
+    "Tractocamión de 2 ejes Semiremolque de 2 Ejes": 32000,
+    "Tractocamión de 2 ejes Semiremolque de 3 Ejes": 40500,
+    "Tractocamión de 3 ejes Semiremolque de 1 Eje": 28000,
+    "Tractocamión de 3 ejes Semiremolque de 2 Ejes": 48000,
+    "Tractocamión de 3 ejes Semiremolque de 3 Ejes": 52000,
+    "Camión Rígido de 2 ejes Remolque de 2 ejes": 31000,
+    "Camión Rígido de 2 ejes Remolque de 3 ejes": 47000,
+    "Camión Rígido de 3 ejes Remolque de 2 ejes": 44000,
+    "Camión Rígido de 3 ejes Remolque de 3 ejes": 48000,
+    "Camión Rígido de 2 ejes Remolque Balanceado de 1 eje": 25000,
+    "Camión Rígido de 2 ejes Remolque Balanceado de 2 ejes": 32000,
+    "Camión Rígido de 2 ejes Remolque Balanceado de 3 ejes": 32000,
+    "Camión Rígido de 3 ejes Remolque Balanceado de 1 eje": 33000,
+    "Camión Rígido de 3 ejes Remolque Balanceado de 2 ejes": 40000,
+    "Camión Rígido de 3 ejes Remolque Balanceado de 3 ejes": 48000,
+}
+df_modelo["pbv_max_kg"] = df_modelo["config_vehiculo"].map(pbv_max)
+assert df_modelo["pbv_max_kg"].notna().all(), "Hay configuraciones sin PBV en el diccionario"
+
+antes = len(df_modelo)
+df_modelo = (
+    df_modelo
+    .assign(kg_corregido=lambda d: d["kilogramos"].between(2, 99) & (d["kilogramos"] * 1000 <= d["pbv_max_kg"]),
+            kilogramos=lambda d: d["kilogramos"].where(~d["kg_corregido"], d["kilogramos"] * 1000))
+    .query("100 <= kilogramos <= pbv_max_kg")
+    .drop(columns="pbv_max_kg")
+)
+print(f"FILTRO KG por PBV: corregidos {df_modelo['kg_corregido'].sum():,}, "
+      f"eliminados {antes - len(df_modelo):,}, quedan {len(df_modelo):,}")
+#%%
+# ============================================================
+# GUARDAR BASE LISTA PARA EL MODELO
+# ============================================================
+RUTA_MODELO = CARPETA_OUTPUT / "rndc_modelo.parquet"
+df_modelo.to_parquet(RUTA_MODELO, index=False)
+print(f"Guardado: {RUTA_MODELO} ({len(df_modelo):,} filas, {df_modelo.shape[1]} columnas)")
+# %%
+df_modelo.info()
+
+# %%

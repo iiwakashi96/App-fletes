@@ -1,0 +1,4 @@
+output/
+raw/
+__pycache__/
+*.parquet
