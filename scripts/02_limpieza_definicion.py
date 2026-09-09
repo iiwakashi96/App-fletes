@@ -434,6 +434,15 @@ RUTA_MODELO = CARPETA_OUTPUT / "rndc_modelo.parquet"
 # (Ya no existe kg_corregido: se elimino junto con la correccion x1000, asi que
 #  no queda ninguna marca del proceso de limpieza como variable del modelo.)
 
+# Las columnas de texto se guardan como "category" con la lista COMPLETA de
+# valores de la base final. Asi, cuando el script 03 parta en entrenamiento y
+# prueba, las dos mitades cargan las mismas categorias aunque alguna aparezca
+# en una sola de ellas (pasa con config_vehiculo: 17 en una, 18 en la otra).
+# Parquet conserva este tipo, asi que el 03 ya no tiene que declararlo.
+for _col in df_modelo.select_dtypes(include=["object", "str"]).columns:
+    df_modelo[_col] = df_modelo[_col].astype("category")
+print("Categoricas declaradas:", list(df_modelo.select_dtypes("category").columns))
+
 # GUARDA: si corriste celdas sueltas y te saltaste filtros, aqui llegarian
 # cientos de miles de filas de mas. La base depurada ronda las 236.000.
 MAX_ESPERADO = 300_000
