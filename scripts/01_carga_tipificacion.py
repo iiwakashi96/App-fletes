@@ -31,7 +31,6 @@ import requests                # requests: pide cosas por internet (páginas, AP
 # ============================================================
 # FUNCIONES Y RUTAS COMPARTIDAS (viven en utils.py, misma carpeta)
 # ============================================================
-# mostrar() y CARPETA_OUTPUT estaban copiados en los tres scripts. Ahora hay
 # una sola version, en utils.py. Estas lineas permiten importarla sin importar
 # desde donde se ejecute el script.
 import sys
@@ -125,7 +124,6 @@ for col in vars_num:
 
 df[vars_num].describe()
 # %%
-# %%
 diccionario = pd.DataFrame({
     "variable": df.columns,
     "tipo": df.dtypes.astype(str),
@@ -135,25 +133,29 @@ diccionario = pd.DataFrame({
 })
 
 diccionario
-
 #%%
 mostrar(df[vars_num].describe().T, "DESCRIPTIVOS ANTES DE FILTRAR")
-
 # %%
 df.info()
-
 #%%
 # ============================================================
 # GUARDAR RESULTADO: para no volver a descargar cada vez
 # ============================================================
-
-
 RUTA_PARQUET = CARPETA_OUTPUT / "rndc_tipificado.parquet"
+# GUARDA: si se salto la celda de conversion numerica, las columnas quedan
+# como texto y todo lo que sigue en el script 02 se rompe en silencio.
+# Mejor detenerse aqui con un mensaje claro que guardar un parquet malo.
+sin_convertir = [c for c in vars_num if not pd.api.types.is_numeric_dtype(df[c])]
+if sin_convertir:
+    raise TypeError(
+        f"Estas columnas siguen siendo texto: {sin_convertir}. "
+        "Te saltaste la celda de conversion (el bucle con pd.to_numeric). "
+        "Corre el script COMPLETO de arriba a abajo antes de guardar."
+    )
+
 df.to_parquet(RUTA_PARQUET, index=False)
 print(f"Guardado: {RUTA_PARQUET} ({len(df):,} filas)")
 
-# %%
-#%%
 # ============================================================
 # FIN DEL SCRIPT 1
 # ============================================================

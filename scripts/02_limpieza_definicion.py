@@ -32,6 +32,16 @@ RUTA_PARQUET = CARPETA_OUTPUT / "rndc_tipificado.parquet"
 
 df = pd.read_parquet(RUTA_PARQUET)
 print(f"Leído: {len(df):,} filas, {df.shape[1]} columnas")
+
+# GUARDA: verifica que el script 01 dejo las columnas numericas convertidas.
+NUMERICAS = ["viajestotales", "kilogramos", "galones", "viajesliquidos",
+             "viajesvalorcero", "kilometros", "valorespagados"]
+texto = [c for c in NUMERICAS if not pd.api.types.is_numeric_dtype(df[c])]
+if texto:
+    raise TypeError(
+        f"El parquet trae estas columnas como texto: {texto}. "
+        "El script 01 se guardo sin convertir. Vuelve a correr el 01 COMPLETO."
+    )
 print(df.dtypes)
 
 
@@ -424,9 +434,18 @@ RUTA_MODELO = CARPETA_OUTPUT / "rndc_modelo.parquet"
 # (Ya no existe kg_corregido: se elimino junto con la correccion x1000, asi que
 #  no queda ninguna marca del proceso de limpieza como variable del modelo.)
 
+# GUARDA: si corriste celdas sueltas y te saltaste filtros, aqui llegarian
+# cientos de miles de filas de mas. La base depurada ronda las 236.000.
+MAX_ESPERADO = 300_000
+if len(df_modelo) > MAX_ESPERADO:
+    raise ValueError(
+        f"df_modelo tiene {len(df_modelo):,} filas, mas de las {MAX_ESPERADO:,} esperadas. "
+        "Falto aplicar algun filtro: corre el script COMPLETO de arriba a abajo."
+    )
+if "pbv_max_kg" in df_modelo.columns:
+    raise ValueError("pbv_max_kg sigue presente: no se ejecuto la celda del filtro de peso.")
+
 df_modelo.to_parquet(RUTA_MODELO, index=False)
 print(f"Guardado: {RUTA_MODELO} ({len(df_modelo):,} filas, {df_modelo.shape[1]} columnas)")
 # %%
 df_modelo.info()
-
-# %%
