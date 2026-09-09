@@ -27,6 +27,25 @@ import pandas as pd            # pandas: maneja tablas (DataFrames). Es el coraz
 import matplotlib.pyplot as plt  # matplotlib: dibuja gráficos. plt es la interfaz básica.
 import seaborn as sns          # seaborn: gráficos estadísticos más bonitos, construidos sobre matplotlib.
 import requests                # requests: pide cosas por internet (páginas, APIs).
+
+# ============================================================
+# FUNCIONES Y RUTAS COMPARTIDAS (viven en utils.py, misma carpeta)
+# ============================================================
+# mostrar() y CARPETA_OUTPUT estaban copiados en los tres scripts. Ahora hay
+# una sola version, en utils.py. Estas lineas permiten importarla sin importar
+# desde donde se ejecute el script.
+import sys
+from pathlib import Path
+
+try:
+    _CARPETA_SCRIPTS = Path(__file__).resolve().parent
+except NameError:            # al correr celdas #%% en VS Code no existe __file__
+    _CARPETA_SCRIPTS = Path("C:/Users/f/Downloads/ADD 1/TALLER ANÁLISIS DE DATOS - PRECIOS VIAJES/scripts")
+if str(_CARPETA_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_CARPETA_SCRIPTS))
+
+from utils import mostrar, CARPETA_OUTPUT
+
 from pathlib import Path
 
 # Configuración global (se hace una sola vez, al inicio):
@@ -35,23 +54,7 @@ pd.set_option("display.max_columns", None)              # que pandas muestre TOD
 pd.set_option("display.float_format", "{:,.2f}".format)  # números decimales con separador de miles y 2 decimales
 
 
-# ============================================================
-# FUNCIÓN AUXILIAR: mostrar tablas
-# ============================================================
-# Una "función" es un bloque de código con nombre que puedes llamar
-# muchas veces. Se define con "def nombre(parámetros):" y se usa
-# escribiendo nombre(valores).
-#
-# ¿Por qué esta función? En Jupyter existe display() para mostrar
-# tablas bonitas, pero en un archivo .py normal display() NO existe
-# y el programa se cae. Esta función funciona en los dos casos.
 
-def mostrar(tabla, titulo=None):
-    """Imprime una tabla de pandas con un título opcional."""
-    # "titulo=None" significa que el título es opcional: si no lo pasas, vale None (nada).
-    if titulo:                          # si sí me pasaron un título...
-        print(f"\n===== {titulo} =====")  # ...lo imprimo. \n es un salto de línea.
-    print(tabla.to_string())            # .to_string() convierte la tabla a texto completo, sin recortar filas.
 
 
 # ============================================================
@@ -144,8 +147,6 @@ df.info()
 # GUARDAR RESULTADO: para no volver a descargar cada vez
 # ============================================================
 
-CARPETA_OUTPUT = Path(r"C:\Users\f\Downloads\ADD 1\TALLER ANÁLISIS DE DATOS - PRECIOS VIAJES\output")
-CARPETA_OUTPUT.mkdir(parents=True, exist_ok=True)   # crea la carpeta (y las intermedias) si no existe
 
 RUTA_PARQUET = CARPETA_OUTPUT / "rndc_tipificado.parquet"
 df.to_parquet(RUTA_PARQUET, index=False)
