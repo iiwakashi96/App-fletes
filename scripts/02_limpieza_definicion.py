@@ -25,25 +25,74 @@ def mostrar(tabla, titulo=None):
 
 #%%
 # ============================================================
-# NULOS: imputar mercancía por código, eliminar el resto
+# COLUMNAS QUE EL PIPELINE NECESITA (BUG 2)
 # ============================================================
+# Antes se hacía df.dropna() a secas, que borra una fila si tiene un nulo
+# en CUALQUIER columna, incluidas las 13 que se eliminan más abajo. Se
+# perdían filas buenas por un nulo en municipiodestino, que ni siquiera
+# entra al modelo. Aquí se lista lo que de verdad se usa.
 
-# --- 1. Catálogo codmercancia -> mercancia y verificación de que es 1:1
-catalogo = df[["codmercancia", "mercancia"]].dropna().drop_duplicates()
-conflictos = catalogo["codmercancia"].duplicated().sum()
-assert conflictos == 0, f"{conflictos} códigos de mercancía tienen más de un nombre; revisar antes de imputar"
-cat_mercancia = catalogo.set_index("codmercancia")["mercancia"].to_dict()
+COLS_MODELO = [           # las que sobreviven y entran al modelo
+    "config_vehiculo",
+    "operaciontransporte",
+    "departamentoorigen",
+    "departamentodestino",
+    "naturalezacarga",
+    "kilogramos",
+    "kilometros",
+    "valorespagados",
+]
+COLS_FILTROS = ["viajestotales", "galones"]   # se usan para filtrar y luego se botan
+COLS_REQUERIDAS = COLS_MODELO + COLS_FILTROS
 
-# --- 2. Imputación
-faltantes = df["mercancia"].isna()
-df.loc[faltantes, "mercancia"] = df.loc[faltantes, "codmercancia"].map(cat_mercancia)
-recuperados = faltantes.sum() - df["mercancia"].isna().sum()
-print(f"Mercancía imputada por código: {recuperados:,} de {faltantes.sum():,} nulos")
 
-# --- 3. Eliminación de filas con nulos restantes
+# ============================================================
+# NULOS: imputar por código y eliminar solo lo irrecuperable (BUG 5)
+# ============================================================
+# Una sola función construye todos los catálogos. Antes el script 01 usaba
+# .mode() (asumiendo que un código puede tener varios nombres) y el 02 un
+# assert de 1:1: dos reglas distintas para el mismo problema. Ahora es una.
+# Además el 01 mostraba que se podían recuperar departamentos por código
+# pero el 02 los botaba con dropna(); aquí sí se recuperan.
+
+def construir_catalogo(datos, pares):
+    """codigo -> nombre, con las filas donde ambos existen.
+    Si un código tiene varios nombres, gana el más frecuente (moda)."""
+    partes = [datos[[cod, nom]].rename(columns={cod: "codigo", nom: "nombre"})
+              for cod, nom in pares]
+    tabla = pd.concat(partes).dropna()
+    n_conflictos = (tabla.groupby("codigo")["nombre"].nunique() > 1).sum()
+    if n_conflictos:
+        print(f"  aviso: {n_conflictos} códigos con más de un nombre; se usa el más frecuente")
+    return tabla.groupby("codigo")["nombre"].agg(lambda x: x.mode().iloc[0]).to_dict()
+
+cat_mercancia = construir_catalogo(df, [("codmercancia", "mercancia")])
+cat_departamento = construir_catalogo(df, [("codmunicipioorigen", "departamentoorigen"),
+                                           ("codmunicipiodestino", "departamentodestino")])
+
+# (columna con nulos, columna código, catálogo)
+imputaciones = [
+    ("mercancia",           "codmercancia",        cat_mercancia),
+    ("departamentoorigen",  "codmunicipioorigen",  cat_departamento),
+    ("departamentodestino", "codmunicipiodestino", cat_departamento),
+]
+
+resumen = []
+for col_nom, col_cod, catalogo in imputaciones:
+    nulos = df[col_nom].isna()
+    df.loc[nulos, col_nom] = df.loc[nulos, col_cod].map(catalogo)
+    recuperados = int(nulos.sum() - df[col_nom].isna().sum())
+    resumen.append({"variable": col_nom,
+                    "nulos_antes": int(nulos.sum()),
+                    "recuperados": recuperados,
+                    "quedan_nulos": int(df[col_nom].isna().sum())})
+mostrar(pd.DataFrame(resumen), "IMPUTACIÓN POR CÓDIGO")
+
+# --- Eliminación de nulos SOLO en las columnas que se usan (BUG 2) ---
 antes = len(df)
-df = df.dropna()
-print(f"Registros eliminados por nulos: {antes - len(df):,}")
+df = df.dropna(subset=COLS_REQUERIDAS)
+print(f"
+Registros eliminados por nulos en columnas requeridas: {antes - len(df):,}")
 print(f"Registros finales: {len(df):,}")
 
 
@@ -59,6 +108,7 @@ n_filtrados = filtro.sum()
 print(f"TOTAL DE REGISTROS CON viajestotales == 1, valorespagados > 10.000 y kilometros > 10: "
       f"{n_filtrados:,} de {len(df):,} ({n_filtrados / len(df):.1%})")
 
+antes = len(df)          # BUG 3: antes valía el conteo previo al dropna, el log mentía
 df = df[filtro].copy()
 print(f"FILTRO METODOLÓGICO: se conservan {len(df):,} de {antes:,} registros "
       f"({len(df) / antes:.1%}); eliminados {antes - len(df):,}")
@@ -273,6 +323,12 @@ print(f"FILTRO KG por PBV: corregidos {df_modelo['kg_corregido'].sum():,}, "
 # GUARDAR BASE LISTA PARA EL MODELO
 # ============================================================
 RUTA_MODELO = CARPETA_OUTPUT / "rndc_modelo.parquet"
+
+# BUG 4: kg_corregido es una marca del proceso de limpieza, no una característica
+# del viaje. Si se guarda, aparece como variable explicativa en el script 03 y el
+# modelo "aprende" cuáles filas corregimos nosotros. Se elimina al guardar.
+df_modelo = df_modelo.drop(columns="kg_corregido")
+
 df_modelo.to_parquet(RUTA_MODELO, index=False)
 print(f"Guardado: {RUTA_MODELO} ({len(df_modelo):,} filas, {df_modelo.shape[1]} columnas)")
 # %%

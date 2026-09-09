@@ -134,7 +134,7 @@ diccionario = pd.DataFrame({
 diccionario
 
 #%%
-mostrar(df[VARIABLES_NUMERICAS].describe().T, "DESCRIPTIVOS ANTES DE FILTRAR")
+mostrar(df[vars_num].describe().T, "DESCRIPTIVOS ANTES DE FILTRAR")
 
 # %%
 df.info()
@@ -154,49 +154,9 @@ print(f"Guardado: {RUTA_PARQUET} ({len(df):,} filas)")
 # %%
 #%%
 # ============================================================
-# DIAGNÓSTICO (SOLO INFORMATIVO): ¿cuántos nulos se recuperarían por código?
+# FIN DEL SCRIPT 1
 # ============================================================
-
-def construir_catalogo(df, pares):
-    """codigo -> nombre, a partir de filas donde ambos existen. Si hay varios nombres, el más frecuente."""
-    partes = [df[[cod, nom]].rename(columns={cod: "codigo", nom: "nombre"}) for cod, nom in pares]
-    tabla = pd.concat(partes).dropna()
-    return tabla.groupby("codigo")["nombre"].agg(lambda s: s.mode().iloc[0]).to_dict()
-
-cat_municipio = construir_catalogo(df, [("codmunicipioorigen", "municipioorigen"),
-                                        ("codmunicipiodestino", "municipiodestino")])
-cat_departamento = construir_catalogo(df, [("codmunicipioorigen", "departamentoorigen"),
-                                           ("codmunicipiodestino", "departamentodestino")])
-cat_mercancia = construir_catalogo(df, [("codmercancia", "mercancia")])
-
-# (columna_codigo, columna_nombre, catálogo) para cada variable con nulos
-pares_imputacion = [
-    ("codmunicipioorigen",  "municipioorigen",     cat_municipio),
-    ("codmunicipiodestino", "municipiodestino",    cat_municipio),
-    ("codmunicipioorigen",  "departamentoorigen",  cat_departamento),
-    ("codmunicipiodestino", "departamentodestino", cat_departamento),
-    ("codmercancia",        "mercancia",           cat_mercancia),
-]
-
-resumen = []
-sin_rescate = pd.Series(False, index=df.index)   # filas que quedarían con algún nulo aun imputando
-
-for col_cod, col_nom, catalogo in pares_imputacion:
-    nulos = df[col_nom].isna()
-    recuperable = nulos & df[col_cod].map(catalogo).notna()
-    sin_rescate |= nulos & ~recuperable
-    resumen.append({
-        "variable": col_nom,
-        "nulos": nulos.sum(),
-        "recuperables": recuperable.sum(),
-        "no_recuperables": (nulos & ~recuperable).sum(),
-        "pct_recuperado": round(recuperable.sum() / nulos.sum() * 100, 1) if nulos.sum() else 100.0,
-    })
-
-mostrar(pd.DataFrame(resumen), "RECUPERACIÓN POSIBLE POR VARIABLE")
-
-filas_con_nulo = df.isna().any(axis=1).sum()
-print(f"\nFilas con algún nulo hoy:            {filas_con_nulo:,}")
-print(f"Filas que seguirían con nulo tras imputar: {sin_rescate.sum():,}")
-print(f"Filas que se salvarían:               {filas_con_nulo - sin_rescate.sum():,}")
-# %%
+# Aquí termina la carga. El tratamiento de nulos (imputar mercancía y
+# departamento a partir del código) se hace en el script 02, en un solo
+# lugar y con una sola función, para que el diagnóstico y la imputación
+# real no puedan contradecirse.
