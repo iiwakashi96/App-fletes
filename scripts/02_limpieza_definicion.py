@@ -307,26 +307,49 @@ pbv_max = {
 df_modelo["pbv_max_kg"] = df_modelo["config_vehiculo"].map(pbv_max)
 assert df_modelo["pbv_max_kg"].notna().all(), "Hay configuraciones sin PBV en el diccionario"
 
+# --- 2. DECISION: se elimina el peso menor a 100 kg, NO se corrige ---
+#
+# Antes aqui se asumia que un peso entre 2 y 99 era en realidad toneladas mal
+# digitadas, y se multiplicaba por 1000. Se revisaron los datos y la hipotesis
+# no se sostiene:
+#
+#   a) Dentro de kg < 100, la correlacion de Spearman entre peso y valor pagado
+#      es NEGATIVA (-0.157). En el resto de la base es POSITIVA (+0.631).
+#      A mas "peso", menos plata: eso no es un peso.
+#   b) Comparando el mismo tipo de vehiculo, los viajes con kg < 100 cuestan
+#      MENOS por kilometro que los de kg >= 100 (razones de 0.67 a 1.02).
+#      Si fueran camiones cargados a tope costarian mas, no menos.
+#   c) La tarifa implicita por tonelada-km, ya corregida x1000, da 136 pesos
+#      contra 384 de la base sana: sigue sin cuadrar, es 3 veces mas barata.
+#   d) Solo el 58% de esas filas pasaba el tope de PBV al multiplicar, asi que
+#      la correccion conservaba peso inventado y botaba el resto sin criterio.
+#
+# Conclusion: en esas filas el campo de peso no es usable. El precio se ve
+# normal, pero no se puede modelar el peso con un peso que no existe.
+#
+# LIMITACION PARA EL INFORME: la perdida no es aleatoria. La banda kg < 100 se
+# concentra en Camion Rigido de 2 ejes (68% de la banda contra 51% de la base),
+# asi que se pierden desproporcionadamente camiones pequenos.
+
 antes = len(df_modelo)
-df_modelo = (
-    df_modelo
-    .assign(kg_corregido=lambda d: d["kilogramos"].between(2, 99) & (d["kilogramos"] * 1000 <= d["pbv_max_kg"]),
-            kilogramos=lambda d: d["kilogramos"].where(~d["kg_corregido"], d["kilogramos"] * 1000))
-    .query("100 <= kilogramos <= pbv_max_kg")
-    .drop(columns="pbv_max_kg")
-)
-print(f"FILTRO KG por PBV: corregidos {df_modelo['kg_corregido'].sum():,}, "
-      f"eliminados {antes - len(df_modelo):,}, quedan {len(df_modelo):,}")
+n_livianos = (df_modelo["kilogramos"] < 100).sum()
+n_sobrepeso = (df_modelo["kilogramos"] > df_modelo["pbv_max_kg"]).sum()
+
+df_modelo = df_modelo.query("100 <= kilogramos <= pbv_max_kg").drop(columns="pbv_max_kg")
+
+print("FILTRO DE PESO:")
+print(f"  eliminados por peso menor a 100 kg (campo no usable): {n_livianos:,}")
+print(f"  eliminados por superar el PBV del vehiculo:           {n_sobrepeso:,}")
+print(f"  quedan {len(df_modelo):,} de {antes:,} ({len(df_modelo)/antes:.1%})")
+
 #%%
 # ============================================================
 # GUARDAR BASE LISTA PARA EL MODELO
 # ============================================================
 RUTA_MODELO = CARPETA_OUTPUT / "rndc_modelo.parquet"
 
-# BUG 4: kg_corregido es una marca del proceso de limpieza, no una característica
-# del viaje. Si se guarda, aparece como variable explicativa en el script 03 y el
-# modelo "aprende" cuáles filas corregimos nosotros. Se elimina al guardar.
-df_modelo = df_modelo.drop(columns="kg_corregido")
+# (Ya no existe kg_corregido: se elimino junto con la correccion x1000, asi que
+#  no queda ninguna marca del proceso de limpieza como variable del modelo.)
 
 df_modelo.to_parquet(RUTA_MODELO, index=False)
 print(f"Guardado: {RUTA_MODELO} ({len(df_modelo):,} filas, {df_modelo.shape[1]} columnas)")
