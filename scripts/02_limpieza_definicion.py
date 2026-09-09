@@ -344,6 +344,67 @@ print(f"  quedan {len(df_modelo):,} de {antes:,} ({len(df_modelo)/antes:.1%})")
 
 #%%
 # ============================================================
+# SEGUNDO FILTRO DE CALIDAD: VALORES ATIPICOS DE valorespagados
+# ============================================================
+# El primer filtro de calidad fue por PBV (arriba): descarta pesos que el
+# camion no puede cargar. Este es el segundo y ultimo: descarta precios que
+# no pueden corresponder a un viaje real.
+#
+# POR QUE $20.000.000:
+#
+#   1. La distribucion se rompe sola. Percentiles de valorespagados:
+#        p99      $  5.500.000
+#        p99,9    $ 11.647.306
+#        p99,95   $ 21.000.000
+#        p99,99   $112.374.089   <-- se multiplica por diez
+#        maximo   $700.000.000
+#      No es una cola larga: es otro grupo de datos pegado al final.
+#
+#   2. Argumento fisico. A la tarifa mediana de esta misma base ($3.509 por
+#      km), un flete de $20.000.000 implicaria recorrer 5.700 km. El viaje
+#      mas largo de toda la base es de 1.883 km y Colombia de punta a punta
+#      son unos 1.700 km. Ningun viaje real puede llegar a esa cifra.
+#
+#   3. Esas filas no son viajes caros, son viajes normales mal digitados:
+#      recorren 491 km de mediana (la base, 442) pero cobran $119.962 por km
+#      contra $3.509 de la base: 34 veces la tarifa. De las 135, hay 116 que
+#      cobran mas de 10 veces lo normal y 35 que recorren menos de 200 km.
+#
+# SE PROBARON VARIOS UMBRALES (analisis de sensibilidad):
+#
+#     umbral    elimina      %        media     mediana     desv.est
+#     $ 10M         283   0,12    1.645.963   1.250.000    1.287.093
+#     $ 12M         226   0,10    1.648.202   1.250.000    1.295.005
+#     $ 15M         169   0,07    1.651.115   1.250.000    1.308.418
+#     $ 20M         135   0,06    1.653.354   1.250.000    1.321.697   <-- elegido
+#     $ 30M          95   0,04    1.657.113   1.250.000    1.353.503
+#     $ 50M          58   0,02    1.662.780   1.250.000    1.428.634
+#
+# Entre $10M y $50M la media se mueve menos de 1% y la mediana no se mueve
+# nada. Esa es justamente la defensa del umbral: no depende del numero exacto.
+# Se elige $20.000.000 por ser el mas conservador (elimina pocas filas) que
+# sigue quedando muy por encima de cualquier flete posible. Ojo con la
+# redaccion en el informe: no es "el mejor umbral" en un sentido tecnico,
+# porque el analisis muestra que cualquiera del rango sirve igual; es una
+# eleccion razonable y verificada.
+#
+# QUE ARREGLA: la media casi no cambia (de $1.692.217 a $1.653.354, un 2,3%)
+# y la mediana no cambia nada. Lo que se corrige es la DESVIACION ESTANDAR,
+# que baja de $2.792.275 a $1.321.697, y el maximo, que baja de
+# $700.000.000 a $20.000.000.
+
+TECHO_VALOR = 20_000_000
+
+antes = len(df_modelo)
+df_modelo = df_modelo[df_modelo["valorespagados"] <= TECHO_VALOR].copy()
+
+print("FILTRO DE VALORES ATIPICOS:")
+print(f"  eliminados por valor mayor a ${TECHO_VALOR:,}: {antes - len(df_modelo):,}")
+print(f"  quedan {len(df_modelo):,} de {antes:,} ({len(df_modelo)/antes:.2%})")
+mostrar(df_modelo["valorespagados"].describe().to_frame(), "valorespagados FINAL")
+
+#%%
+# ============================================================
 # GUARDAR BASE LISTA PARA EL MODELO
 # ============================================================
 RUTA_MODELO = CARPETA_OUTPUT / "rndc_modelo.parquet"
