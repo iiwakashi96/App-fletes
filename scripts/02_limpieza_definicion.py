@@ -91,8 +91,7 @@ mostrar(pd.DataFrame(resumen), "IMPUTACIÓN POR CÓDIGO")
 # --- Eliminación de nulos SOLO en las columnas que se usan (BUG 2) ---
 antes = len(df)
 df = df.dropna(subset=COLS_REQUERIDAS)
-print(f"
-Registros eliminados por nulos en columnas requeridas: {antes - len(df):,}")
+print(f"\nRegistros eliminados por nulos en columnas requeridas: {antes - len(df):,}")
 print(f"Registros finales: {len(df):,}")
 
 
