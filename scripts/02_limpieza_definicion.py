@@ -52,6 +52,35 @@ print(df.dtypes)
 
 #%%
 # ============================================================
+# DUPLICADOS: se eliminan aquí, con las 21 columnas todavía completas
+# ============================================================
+# Va en este punto a propósito. Más abajo se botan municipio y mercancia, y
+# a partir de ahí dos viajes de municipios distintos pueden verse idénticos
+# sin serlo. Aquí no: dos filas iguales lo son en TODO (mismo municipio,
+# misma mercancía, mismos kilómetros, mismo peso, mismo valor pagado), así
+# que son el mismo registro publicado dos veces.
+#
+# Cuesta poco: se quitan 57.268 filas del millón, pero la base final solo
+# baja de 235.949 a 222.046 (13.903 menos), porque la mayoría de esos
+# duplicados los eliminaban de todas formas los filtros siguientes.
+#
+# Para qué sirve: al partir en entrenamiento y prueba en el script 03, una
+# fila repetida puede caer a los dos lados y el modelo llega al examen con
+# la respuesta ya vista. Esta limpieza baja esa filtración del 21,1% al
+# 13,9% de la base de prueba.
+#
+# Lo que NO se toca: los duplicados que aparecen DESPUÉS, al botar municipio
+# y mercancia (21.394 filas). Esos son viajes realmente distintos que quedan
+# indistinguibles, y borrarlos sí sería perder datos.
+
+antes = len(df)
+df = df.drop_duplicates()
+print(f"DUPLICADOS EXACTOS (21 columnas): eliminados {antes - len(df):,}, "
+      f"quedan {len(df):,}")
+
+
+#%%
+# ============================================================
 # COLUMNAS QUE EL PIPELINE NECESITA (BUG 2)
 # ============================================================
 # Antes se hacía df.dropna() a secas, que borra una fila si tiene un nulo
