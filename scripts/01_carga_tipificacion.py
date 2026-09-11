@@ -1,11 +1,11 @@
 """
-TALLER 1 - PIPELINE RNDC (versión comentada para principiantes)
+TALLER 1 - PIPELINE RNDC (versión))
 
 ¿Qué es un "pipeline"? Es una cadena de pasos por la que pasan los datos,
 en orden: primero se cargan, luego se limpian, luego se analizan.
 Cada paso recibe el resultado del anterior.
 
-Este archivo hace exactamente lo mismo que tu versión original, pero:
+Este archivo:
   - corrige los errores que impedían que corriera,
   - elimina el código repetido usando "funciones" (explicadas más abajo),
   - explica qué hace cada bloque y por qué.
@@ -13,9 +13,7 @@ Este archivo hace exactamente lo mismo que tu versión original, pero:
 Los pasos son:
   1. Cargar los datos desde internet y convertir los números
   2. Diagnóstico: cuántas filas, qué tipos, cuántos vacíos
-  3. Limpieza: quitar registros inservibles y columnas que no aportan
-  4. Dividir en carga física y carga líquida
-  5. Explorar cada base con las mismas funciones (tablas y gráficos)
+
 """
 #%%
 # ============================================================
@@ -38,8 +36,13 @@ from pathlib import Path
 
 try:
     _CARPETA_SCRIPTS = Path(__file__).resolve().parent
-except NameError:            # al correr celdas #%% en VS Code no existe __file__
-    _CARPETA_SCRIPTS = Path("C:/Users/f/Downloads/ADD 1/TALLER ANÁLISIS DE DATOS - PRECIOS VIAJES/scripts")
+except NameError:            # al correr celdas #%% no existe __file__
+    # Se busca utils.py partiendo de la carpeta de trabajo, sin nombres fijos.
+    _CARPETA_SCRIPTS = next(
+        (c for c in (Path.cwd() / "scripts", Path.cwd(), Path.cwd().parent / "scripts")
+         if (c / "utils.py").exists()),
+        Path.cwd(),
+    )
 if str(_CARPETA_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_CARPETA_SCRIPTS))
 
@@ -163,3 +166,5 @@ print(f"Guardado: {RUTA_PARQUET} ({len(df):,} filas)")
 # departamento a partir del código) se hace en el script 02, en un solo
 # lugar y con una sola función, para que el diagnóstico y la imputación
 # real no puedan contradecirse.
+
+# %%
