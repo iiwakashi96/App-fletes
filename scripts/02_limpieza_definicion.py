@@ -79,6 +79,7 @@ COLS_MODELO = [           # las que sobreviven y entran al modelo
     "departamentoorigen",
     "departamentodestino",
     "naturalezacarga",
+    "categoria_mercancia",   # se construye mas abajo, a partir de codmercancia
     "kilogramos",
     "kilometros",
     "valorespagados",
@@ -128,6 +129,71 @@ for col_nom, col_cod, catalogo in imputaciones:
                     "recuperados": recuperados,
                     "quedan_nulos": int(df[col_nom].isna().sum())})
 mostrar(pd.DataFrame(resumen), "IMPUTACIÓN POR CÓDIGO")
+
+
+#%%
+# ============================================================
+# CATEGORIA DE MERCANCIA A PARTIR DEL CODIGO ARANCELARIO
+# ============================================================
+# La columna mercancia tiene 1.223 niveles: inmanejable. Hasta ahora se
+# usaba naturalezacarga (8 niveles) como reemplazo, pero casi todo cae en
+# "Carga Normal" y distingue poco.
+#
+# Los dos primeros digitos de codmercancia son el CAPITULO del sistema
+# arancelario, que agrupa la mercancia por familia. De ahi salen 16 grupos
+# con sentido economico: Metales, Quimicos, Maquinaria, Alimentos...
+#
+# Medido: el error del modelo baja de 46,4% a 45,6%. Usar las dos juntas
+# (naturalezacarga y esta) da 45,7%, o sea lo mismo que usar solo esta; se
+# conservan las dos porque no estorban y naturalezacarga sirve en las
+# graficas del informe.
+#
+# Va AQUI, despues de la imputacion y antes del dropna, porque la columna
+# entra en COLS_MODELO y por tanto en COLS_REQUERIDAS: tiene que existir
+# antes de que el dropna la busque. Y antes de la llave GRUPO, porque como
+# es variable del modelo tambien tiene que formar parte de la llave.
+#
+# Los codigos traen ceros a la izquierda: 001006 -> 1006 -> capitulo 10.
+
+CAPITULOS = [
+    (1, 5, "Animales y productos animales"),
+    (6, 14, "Productos vegetales"),
+    (15, 24, "Alimentos y bebidas"),
+    (25, 27, "Minerales y combustibles"),
+    (28, 38, "Quimicos"),
+    (39, 40, "Plasticos y caucho"),
+    (41, 43, "Pieles y cuero"),
+    (44, 49, "Madera y papel"),
+    (50, 63, "Textiles"),
+    (64, 71, "Calzado y manufacturas"),
+    (72, 83, "Metales"),
+    (84, 85, "Maquinaria"),
+    (86, 89, "Material de transporte"),
+    (90, 97, "Instrumentos y varios"),
+]
+
+def categoria_mercancia(codigo):
+    """Agrupa la mercancia por el capitulo (dos primeros digitos del codigo)."""
+    try:
+        limpio = str(int(float(codigo)))     # quita los ceros a la izquierda
+    except (TypeError, ValueError):
+        return "Sin informacion"
+    if len(limpio) < 2:
+        return "Sin informacion"
+    cap = int(limpio[:2])
+    if cap == 98:
+        return "Productos varios"        # codigo especial del RNDC
+    if cap == 99:
+        return "Contenedor vacio"        # codigo especial del RNDC
+    for desde, hasta, nombre in CAPITULOS:
+        if desde <= cap <= hasta:
+            return nombre
+    return "Otros"
+
+df["categoria_mercancia"] = df["codmercancia"].map(categoria_mercancia)
+
+mostrar(df["categoria_mercancia"].value_counts().to_frame(), "CATEGORIA DE MERCANCIA")
+print(f"  {df.categoria_mercancia.nunique()} categorias, contra {df.naturalezacarga.nunique()} de naturalezacarga")
 
 # --- Eliminación de nulos SOLO en las columnas que se usan ---
 antes = len(df)

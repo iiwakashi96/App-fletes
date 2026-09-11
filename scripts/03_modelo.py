@@ -101,7 +101,8 @@ print("\nDataFrame utilizado para el análisis:", len(df))
 import numpy as np
 
 VARS_CAT = ["config_vehiculo", "operaciontransporte", "departamentoorigen",
-            "departamentodestino", "naturalezacarga"]
+            "departamentodestino", "naturalezacarga",
+            "categoria_mercancia"]
 VARS_NUM = ["kilometros", "kilogramos"]
 OBJETIVO = "valorespagados"
 
@@ -247,32 +248,36 @@ print("\n  No compiten: el 1 va en el informe, el 2 va en la herramienta.")
 # ============================================================
 # LA HERRAMIENTA: consultar el rango de un viaje
 # ============================================================
-def cuanto_cobrar(kilometros, kilogramos, config_vehiculo,
-                  operaciontransporte, departamentoorigen,
-                  departamentodestino, naturalezacarga):
-    """Devuelve el rango de precios sugerido para un viaje."""
-    viaje = pd.DataFrame([{
-        "kilometros": kilometros, "kilogramos": kilogramos,
-        "config_vehiculo": config_vehiculo, "operaciontransporte": operaciontransporte,
-        "departamentoorigen": departamentoorigen, "departamentodestino": departamentodestino,
-        "naturalezacarga": naturalezacarga,
-    }])
+def cuanto_cobrar(**datos_del_viaje):
+    """Devuelve el rango de precios sugerido para un viaje.
+
+    Se le pasan los datos por nombre, por ejemplo:
+        cuanto_cobrar(kilometros=500, kilogramos=20000,
+                      config_vehiculo="...", departamentoorigen="...", ...)
+
+    No lleva la lista de parametros escrita a mano: la toma de VARS_NUM y
+    VARS_CAT. Asi, si se agrega o se quita una variable del modelo, la
+    funcion se adapta y avisa cual falta en vez de fallar con un KeyError.
+    """
+    faltan = [c for c in VARS_NUM + VARS_CAT if c not in datos_del_viaje]
+    if faltan:
+        raise ValueError(f"Faltan estos datos del viaje: {faltan}")
+
+    viaje = pd.DataFrame([datos_del_viaje])
     for c in VARS_CAT:
-        viaje[c] = viaje[c].astype(df[c].dtype)   # mismas categorías que el entrenamiento
+        viaje[c] = viaje[c].astype(df[c].dtype)   # mismas categorias que el entrenamiento
 
     r = {q: float(np.exp(arboles[q].predict(viaje[VARS_NUM + VARS_CAT]))[0]) for q in CUANTILES}
-    print(f"\n  Viaje: {kilometros:,} km | {kilogramos:,} kg | {config_vehiculo}")
+    print(f"\n  Viaje: {datos_del_viaje['kilometros']:,} km | "
+          f"{datos_del_viaje['kilogramos']:,} kg | "
+          f"{datos_del_viaje['config_vehiculo']}")
     print(f"  Rango sugerido : {r[0.10]:,.0f}  a  {r[0.90]:,.0f} pesos")
     print(f"  Precio tipico  : {r[0.50]:,.0f} pesos")
     return r
 
 
-# Ejemplo tomado de un viaje real de la base de prueba:
+# Ejemplo tomado de un viaje real de la base de prueba. Se arma solo con las
+# variables del modelo, asi que tampoco hay que actualizarlo a mano.
 ejemplo = df_test.iloc[0]
-cuanto_cobrar(
-    kilometros=int(ejemplo.kilometros), kilogramos=int(ejemplo.kilogramos),
-    config_vehiculo=ejemplo.config_vehiculo, operaciontransporte=ejemplo.operaciontransporte,
-    departamentoorigen=ejemplo.departamentoorigen, departamentodestino=ejemplo.departamentodestino,
-    naturalezacarga=ejemplo.naturalezacarga,
-)
+cuanto_cobrar(**{c: ejemplo[c] for c in VARS_NUM + VARS_CAT})
 print(f"  Se pago en realidad: {ejemplo.valorespagados:,.0f} pesos")
