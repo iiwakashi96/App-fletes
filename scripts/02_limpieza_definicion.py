@@ -136,6 +136,43 @@ print(f"\nRegistros eliminados por nulos en columnas requeridas: {antes - len(df
 print(f"Registros finales: {len(df):,}")
 
 
+#%%
+# ============================================================
+# LLAVE DE AGRUPACION (columna GRUPO)
+# ============================================================
+# Va aqui, despues de la imputacion: esta rellena departamentoorigen y
+# departamentodestino, que son parte de la llave. Calcularla antes dejaria
+# esas filas con una llave basada en un nulo que luego cambia.
+#
+# QUE ES: un numero que identifica el TIPO de viaje, no la fila. Se repite
+# a proposito: todas las filas que el modelo ve iguales comparten el mismo
+# GRUPO. En la base final quedan 129.016 grupos para 222.046 filas.
+#
+# CON QUE SE CONSTRUYE: exactamente las variables que entran al modelo, ni
+# mas ni menos. Sin valorespagados, porque esa es la respuesta, no la
+# pregunta: dos viajes iguales con precios distintos son la misma pregunta
+# y tienen que quedar en el mismo grupo.
+#
+# PARA QUE SIRVE: en el script 03, GroupShuffleSplit reparte grupos en vez
+# de filas, asi ninguna combinacion queda partida entre entrenamiento y
+# prueba. Sin esto, el 51,6% de la base de prueba contiene combinaciones
+# que el modelo ya vio, y el examen mide memoria en vez de prediccion.
+#
+# OJO: GRUPO NO es una variable del modelo. Solo la usa el repartidor. Si
+# entrara, get_dummies crearia 129.015 columnas y el modelo aprenderia el
+# precio de memoria por grupo, sin mirar kilometros ni peso.
+#
+# SI CAMBIAN LAS VARIABLES DEL MODELO, esta llave cambia sola, porque se
+# deriva de COLS_MODELO.
+
+COLS_LLAVE = [c for c in COLS_MODELO if c != "valorespagados"]
+
+df["GRUPO"] = pd.factorize(df[COLS_LLAVE].astype(str).agg("|".join, axis=1))[0]
+
+print(f"LLAVE GRUPO creada con {len(COLS_LLAVE)} columnas: {COLS_LLAVE}")
+print(f"  {df.GRUPO.nunique():,} grupos distintos para {len(df):,} filas")
+
+
 #PRIMER FILTRO APLICADO METODOLOGICAMENTE, SE DEBE APLICAR ANTES DE CUALQUIER ANÁLISIS, YA QUE SON REGISTROS QUE NO TIENEN SENTIDO PARA EL ANÁLISIS DE PRECIOS DE VIAJES.
 #%%
 filtro = (

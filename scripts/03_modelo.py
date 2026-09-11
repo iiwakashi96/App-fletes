@@ -45,14 +45,31 @@ print(df_modelo.dtypes)
 # DIVISIÓN DE LA BASE DE DATOS EN ENTRENAMIENTO Y PRUEBA
 # ============================================================
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 
-# División 80% entrenamiento  y 20% prueba
-df_train, df_test = train_test_split(
-    df_modelo,
-    test_size=0.20,
-    random_state=42
-)
+# División 80% entrenamiento y 20% prueba, POR GRUPOS.
+#
+# train_test_split reparte filas sueltas, y eso parte los grupos: la misma
+# combinación de viaje puede caer a los dos lados. El modelo estudia la fila
+# de entrenamiento y luego le preguntas la de prueba, que es la misma
+# pregunta. Medido: el 51,6% de la base de prueba tenía ese problema.
+#
+# GroupShuffleSplit reparte GRUPOS: baraja los 129.016 valores distintos de
+# la columna GRUPO (creada en el script 02) y los va echando al montón de
+# prueba hasta acercarse al 20% de las FILAS. Un grupo nunca se corta.
+#
+# Devuelve posiciones, no tablas, por eso van dos líneas en vez de una:
+#   n_splits=1  -> una sola partición (puede generar varias)
+#   next(...)   -> .split() devuelve un generador; next() pide el primero
+#
+# El 20% queda aproximado porque los grupos son piezas indivisibles. Con
+# 129.016 grupos el desajuste es despreciable.
+
+gss = GroupShuffleSplit(n_splits=1, test_size=0.20, random_state=42)
+i_train, i_test = next(gss.split(df_modelo, groups=df_modelo["GRUPO"]))
+
+df_train = df_modelo.iloc[i_train]
+df_test = df_modelo.iloc[i_test]
 
 # Reiniciamos los indices
 df_train = df_train.reset_index(drop=True)
@@ -61,6 +78,12 @@ df_test = df_test.reset_index(drop=True)
 print("Base de datos completa:", len(df_modelo))
 print("Base de entrenamiento:", len(df_train))
 print("Base de prueba:", len(df_test))
+
+# Comprobación: ningún grupo debe estar en los dos lados.
+comunes = set(df_train["GRUPO"]) & set(df_test["GRUPO"])
+assert not comunes, f"{len(comunes)} grupos quedaron partidos entre entrenamiento y prueba"
+print(f"Sin filtración: 0 grupos compartidos "
+      f"({df_train.GRUPO.nunique():,} grupos entrenan, {df_test.GRUPO.nunique():,} evalúan)")
 
 # ------------------------------------------------------------
 #Se deja la bd de ENTRENAMIENTO como df: todo el analisis se hace con ella.
@@ -81,6 +104,10 @@ VARS_CAT = ["config_vehiculo", "operaciontransporte", "departamentoorigen",
             "departamentodestino", "naturalezacarga"]
 VARS_NUM = ["kilometros", "kilogramos"]
 OBJETIVO = "valorespagados"
+
+# GRUPO no aparece en ninguna de las dos listas a propósito: solo sirvió para
+# repartir. Si entrara al modelo, get_dummies crearía 129.015 columnas y el
+# modelo aprendería el precio de memoria por grupo, ignorando km y peso.
 
 # Las categóricas ya vienen declaradas como "category" desde el script 02, con
 # la lista completa de valores. Por eso aquí no hay que convertir nada: al partir
