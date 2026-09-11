@@ -172,7 +172,7 @@ CAPITULOS = [
     (90, 97, "Instrumentos y varios"),
 ]
 
-def categoria_mercancia(codigo):
+def clasificar_mercancia(codigo):
     """Agrupa la mercancia por el capitulo (dos primeros digitos del codigo)."""
     try:
         limpio = str(int(float(codigo)))     # quita los ceros a la izquierda
@@ -190,7 +190,7 @@ def categoria_mercancia(codigo):
             return nombre
     return "Otros"
 
-df["categoria_mercancia"] = df["codmercancia"].map(categoria_mercancia)
+df["categoria_mercancia"] = df["codmercancia"].map(clasificar_mercancia)
 
 mostrar(df["categoria_mercancia"].value_counts().to_frame(), "CATEGORIA DE MERCANCIA")
 print(f"  {df.categoria_mercancia.nunique()} categorias, contra {df.naturalezacarga.nunique()} de naturalezacarga")
