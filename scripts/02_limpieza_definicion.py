@@ -18,13 +18,8 @@ from pathlib import Path
 
 try:
     _CARPETA_SCRIPTS = Path(__file__).resolve().parent
-except NameError:            # al correr celdas #%% no existe __file__
-    # Se busca utils.py partiendo de la carpeta de trabajo, sin nombres fijos.
-    _CARPETA_SCRIPTS = next(
-        (c for c in (Path.cwd() / "scripts", Path.cwd(), Path.cwd().parent / "scripts")
-         if (c / "utils.py").exists()),
-        Path.cwd(),
-    )
+except NameError:
+    _CARPETA_SCRIPTS = Path("C:/Users/f/Downloads/ADD 1/PIPELINE - PRECIOS VIAJES/scripts")
 if str(_CARPETA_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_CARPETA_SCRIPTS))
 
@@ -51,35 +46,25 @@ print(df.dtypes)
 
 
 #%%
-# ============================================================
-# DUPLICADOS: se eliminan aquí, con las 21 columnas todavía completas
-# ============================================================
-# Va en este punto a propósito. Más abajo se botan municipio y mercancia, y
-# a partir de ahí dos viajes de municipios distintos pueden verse idénticos
-# sin serlo. Aquí no: dos filas iguales lo son en TODO (mismo municipio,
-# misma mercancía, mismos kilómetros, mismo peso, mismo valor pagado), así
-# que son el mismo registro publicado dos veces.
-#
-# Cuesta poco: se quitan 57.268 filas del millón, pero la base final solo
-# baja de 235.949 a 222.046 (13.903 menos), porque la mayoría de esos
-# duplicados los eliminaban de todas formas los filtros siguientes.
-#
-# Para qué sirve: al partir en entrenamiento y prueba en el script 03, una
-# fila repetida puede caer a los dos lados y el modelo llega al examen con
-# la respuesta ya vista. Esta limpieza baja esa filtración del 21,1% al
-# 13,9% de la base de prueba.
-#
-# Lo que NO se toca: los duplicados que aparecen DESPUÉS, al botar municipio
-# y mercancia (21.394 filas). Esos son viajes realmente distintos que quedan
-# indistinguibles, y borrarlos sí sería perder datos.
+#  0. Eliminar registros duplicados
+
+# Se hace AQUI, con las 21 columnas completas: en este punto dos filas
+# iguales lo son en todo (mismo municipio, misma mercancia, mismos km,
+# mismo valor), o sea el mismo registro publicado dos veces. Mas abajo se
+# botan municipio y mercancia, y desde ahi dos viajes distintos pueden
+# verse iguales sin serlo; esos NO se tocan.
+# Quita 57.268 filas del millon; la base final baja de 235.949 a 222.046.
+# Sirve para que una misma fila no caiga a los dos lados de la particion
+# del script 03 (la filtracion baja del 21,1% al 13,9%).
 
 antes = len(df)
 df = df.drop_duplicates()
-print(f"DUPLICADOS EXACTOS (21 columnas): eliminados {antes - len(df):,}, "
-      f"quedan {len(df):,}")
-
+print(f"DUPLICADOS EXACTOS: eliminados {antes - len(df):,}, quedan {len(df):,}")
 
 #%%
+  #1. Limpieza: quitar registros inservibles y columnas que no aportan
+  #2. Dividir en carga física y carga líquida
+  #3. Explorar cada base con las mismas funciones (tablas y gráficos)
 # ============================================================
 # COLUMNAS QUE EL PIPELINE NECESITA (BUG 2)
 # ============================================================
