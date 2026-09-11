@@ -66,7 +66,7 @@ print(f"DUPLICADOS EXACTOS: eliminados {antes - len(df):,}, quedan {len(df):,}")
   #2. Dividir en carga física y carga líquida
   #3. Explorar cada base con las mismas funciones (tablas y gráficos)
 # ============================================================
-# COLUMNAS QUE EL PIPELINE NECESITA (BUG 2)
+# COLUMNAS QUE EL PIPELINE NECESITA
 # ============================================================
 # Antes se hacía df.dropna() a secas, que borra una fila si tiene un nulo
 # en CUALQUIER columna, incluidas las 13 que se eliminan más abajo. Se
@@ -88,7 +88,7 @@ COLS_REQUERIDAS = COLS_MODELO + COLS_FILTROS
 
 
 # ============================================================
-# NULOS: imputar por código y eliminar solo lo irrecuperable (BUG 5)
+# NULOS: imputar por código y eliminar solo lo irrecuperable
 # ============================================================
 # Una sola función construye todos los catálogos. Antes el script 01 usaba
 # .mode() (asumiendo que un código puede tener varios nombres) y el 02 un
@@ -129,7 +129,7 @@ for col_nom, col_cod, catalogo in imputaciones:
                     "quedan_nulos": int(df[col_nom].isna().sum())})
 mostrar(pd.DataFrame(resumen), "IMPUTACIÓN POR CÓDIGO")
 
-# --- Eliminación de nulos SOLO en las columnas que se usan (BUG 2) ---
+# --- Eliminación de nulos SOLO en las columnas que se usan ---
 antes = len(df)
 df = df.dropna(subset=COLS_REQUERIDAS)
 print(f"\nRegistros eliminados por nulos en columnas requeridas: {antes - len(df):,}")
@@ -148,7 +148,8 @@ n_filtrados = filtro.sum()
 print(f"TOTAL DE REGISTROS CON viajestotales == 1, valorespagados > 10.000 y kilometros > 10: "
       f"{n_filtrados:,} de {len(df):,} ({n_filtrados / len(df):.1%})")
 
-antes = len(df)          # BUG 3: antes valía el conteo previo al dropna, el log mentía
+antes = len(df)          # se reinicia aquí: si no, el log contaría como
+                         # eliminadas por el filtro filas que quitó el dropna
 df = df[filtro].copy()
 print(f"FILTRO METODOLÓGICO: se conservan {len(df):,} de {antes:,} registros "
       f"({len(df) / antes:.1%}); eliminados {antes - len(df):,}")

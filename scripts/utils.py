@@ -21,11 +21,7 @@ from pathlib import Path
 # ============================================================
 # RUTAS DEL PROYECTO
 # ============================================================
-# Las rutas se deducen de donde esta ESTE archivo, no se escriben a mano.
-# utils.py siempre se importa como modulo, asi que __file__ siempre existe aqui.
-# Gracias a esto puedes renombrar o mover la carpeta del proyecto y nada se rompe.
-CARPETA_PROYECTO = Path(__file__).resolve().parent.parent
-CARPETA_OUTPUT = CARPETA_PROYECTO / "output"
+CARPETA_OUTPUT = Path(r"C:\Users\f\Downloads\ADD 1\PIPELINE - PRECIOS VIAJES\output")
 CARPETA_OUTPUT.mkdir(parents=True, exist_ok=True)   # la crea si no existe
 
 RUTA_TIPIFICADO = CARPETA_OUTPUT / "rndc_tipificado.parquet"   # sale del script 01
