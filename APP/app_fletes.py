@@ -25,7 +25,7 @@ import pandas as pd
 # CARGA DEL MODELO
 # ============================================================
 CARPETA_APP = Path(__file__).resolve().parent
-RUTA_MODELO = CARPETA_APP.parent / "output" / "modelo_fletes.joblib"
+RUTA_MODELO = CARPETA_APP / "modelo_fletes.joblib"
 
 if not RUTA_MODELO.exists():
     raise SystemExit(

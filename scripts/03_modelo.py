@@ -328,7 +328,12 @@ paquete = {
     "cobertura_rango_pct": round(float(dentro.mean() * 100), 1),
 }
 
-RUTA_MODELO_APP = CARPETA_OUTPUT / "modelo_fletes.joblib"
+# Se guarda en APP/ y no en output/, por dos razones: la carpeta APP queda
+# autosuficiente, y output/ esta en el .gitignore (al subir el proyecto a
+# GitHub para desplegar la app web, el modelo no viajaria).
+CARPETA_APP = CARPETA_OUTPUT.parent / "APP"
+CARPETA_APP.mkdir(exist_ok=True)
+RUTA_MODELO_APP = CARPETA_APP / "modelo_fletes.joblib"
 joblib.dump(paquete, RUTA_MODELO_APP)
 print(f"Modelo guardado: {RUTA_MODELO_APP}")
 print(f"  {len(paquete['arboles'])} arboles | {len(paquete['vars_cat'])} categoricas | "
