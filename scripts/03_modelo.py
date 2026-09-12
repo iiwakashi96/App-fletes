@@ -1,4 +1,4 @@
-
+#%%
 # ============================================================
 # IMPORTS Y CARGA DEL PARQUET GENERADO EN EL SCRIPT 2
 # ============================================================
@@ -54,7 +54,7 @@ from sklearn.model_selection import GroupShuffleSplit
 # de entrenamiento y luego le preguntas la de prueba, que es la misma
 # pregunta. Medido: el 51,6% de la base de prueba tenía ese problema.
 #
-# GroupShuffleSplit reparte GRUPOS: baraja los 129.016 valores distintos de
+# GroupShuffleSplit reparte GRUPOS: baraja los valores distintos de
 # la columna GRUPO (creada en el script 02) y los va echando al montón de
 # prueba hasta acercarse al 20% de las FILAS. Un grupo nunca se corta.
 #
@@ -63,7 +63,8 @@ from sklearn.model_selection import GroupShuffleSplit
 #   next(...)   -> .split() devuelve un generador; next() pide el primero
 #
 # El 20% queda aproximado porque los grupos son piezas indivisibles. Con
-# 129.016 grupos el desajuste es despreciable.
+# decenas de miles de grupos el desajuste es de decimas. El script imprime
+# cuantos grupos hay de verdad, unas lineas mas abajo.
 
 gss = GroupShuffleSplit(n_splits=1, test_size=0.20, random_state=42)
 i_train, i_test = next(gss.split(df_modelo, groups=df_modelo["GRUPO"]))
@@ -107,8 +108,9 @@ VARS_NUM = ["kilometros", "kilogramos"]
 OBJETIVO = "valorespagados"
 
 # GRUPO no aparece en ninguna de las dos listas a propósito: solo sirvió para
-# repartir. Si entrara al modelo, get_dummies crearía 129.015 columnas y el
-# modelo aprendería el precio de memoria por grupo, ignorando km y peso.
+# repartir. Si entrara al modelo, get_dummies crearía una columna por grupo
+# (decenas de miles) y el modelo aprendería el precio de memoria por grupo,
+# ignorando kilometros y peso.
 
 # Las categóricas ya vienen declaradas como "category" desde el script 02, con
 # la lista completa de valores. Por eso aquí no hay que convertir nada: al partir
@@ -158,6 +160,8 @@ X_train_lin[VARS_NUM] = np.log(X_train_lin[VARS_NUM])
 X_test_lin = pd.get_dummies(df_test[VARS_NUM + VARS_CAT], columns=VARS_CAT,
                             drop_first=True, dtype=float)
 X_test_lin[VARS_NUM] = np.log(X_test_lin[VARS_NUM])
+
+
 X_test_lin = X_test_lin.reindex(columns=X_train_lin.columns, fill_value=0.0)
 
 modelo_lineal = sm.OLS(y_train, sm.add_constant(X_train_lin)).fit()
@@ -188,7 +192,8 @@ for v in VARS_NUM:
 correccion = np.exp(modelo_lineal.resid.var() / 2)
 pred_lineal = np.exp(modelo_lineal.predict(sm.add_constant(X_test_lin))) * correccion
 err_lineal = evaluar(pred_lineal, "MODELO 1 sobre la base de prueba")
-
+#%%
+modelo_lineal.summary()
 
 #%%
 # ============================================================
@@ -263,14 +268,28 @@ def cuanto_cobrar(**datos_del_viaje):
     if faltan:
         raise ValueError(f"Faltan estos datos del viaje: {faltan}")
 
+    # Validacion de los valores. Sin esto, un valor mal escrito (una tilde de
+    # menos, por ejemplo) se convertia en NaN en silencio y el modelo entregaba
+    # un precio igual, calculado sin esa variable. Mejor fallar y decir cual es.
+    for c in VARS_CAT:
+        validos = list(df[c].cat.categories)
+        if datos_del_viaje[c] not in validos:
+            raise ValueError(
+                f"{datos_del_viaje[c]!r} no es un valor valido de {c}. "
+                f"Los validos son: {validos}"
+            )
+
     viaje = pd.DataFrame([datos_del_viaje])
     for c in VARS_CAT:
         viaje[c] = viaje[c].astype(df[c].dtype)   # mismas categorias que el entrenamiento
 
     r = {q: float(np.exp(arboles[q].predict(viaje[VARS_NUM + VARS_CAT]))[0]) for q in CUANTILES}
-    print(f"\n  Viaje: {datos_del_viaje['kilometros']:,} km | "
-          f"{datos_del_viaje['kilogramos']:,} kg | "
-          f"{datos_del_viaje['config_vehiculo']}")
+    # Se imprimen TODAS las variables del modelo, no un subconjunto: antes
+    # solo salian tres y parecia que el modelo usaba tres.
+    print()
+    print("  Datos del viaje:")
+    for c in VARS_NUM + VARS_CAT:
+        print(f"    {c:<22} {datos_del_viaje[c]}")
     print(f"  Rango sugerido : {r[0.10]:,.0f}  a  {r[0.90]:,.0f} pesos")
     print(f"  Precio tipico  : {r[0.50]:,.0f} pesos")
     return r
@@ -281,3 +300,5 @@ def cuanto_cobrar(**datos_del_viaje):
 ejemplo = df_test.iloc[0]
 cuanto_cobrar(**{c: ejemplo[c] for c in VARS_NUM + VARS_CAT})
 print(f"  Se pago en realidad: {ejemplo.valorespagados:,.0f} pesos")
+
+# %%
