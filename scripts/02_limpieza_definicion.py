@@ -291,13 +291,18 @@ COLS_ELIMINAR = [
     "codoperaciontransporte",   # duplica operaciontransporte
     "codmunicipioorigen",       # duplica municipioorigen
     "codmunicipiodestino",      # duplica municipiodestino
-    "codmercancia",             # duplica mercancia
+    "codmercancia",             # duplica mercancia. Se elimina DESPUES de haberlo
+                                # usado para imputar nombres y para construir
+                                # categoria_mercancia, que si entra al modelo
 
     # --- Alta cardinalidad: informativas pero inmanejables en una primera versión.
-    #     Se reemplazan por su versión agregada (departamento, naturalezacarga) ---
-    "municipioorigen",    # 1.886 niveles → se usa departamentoorigen (32)
-    "municipiodestino",   # 2.791 niveles → se usa departamentodestino (33)
-    "mercancia",          # 1.223 niveles → se usa naturalezacarga (8)
+    #     Se reemplazan por su versión agregada (departamento, naturalezacarga,
+    #     categoria_mercancia) ---
+    "municipioorigen",    # 1.886 niveles → se usa departamentoorigen (25 tras los filtros)
+    "municipiodestino",   # 2.791 niveles → se usa departamentodestino (25 tras los filtros)
+    "mercancia",          # 1.223 niveles → se reemplaza por DOS variables:
+                          #   naturalezacarga (8)      : como hay que transportarla
+                          #   categoria_mercancia (16) : que es la carga
 ]
 
 df_modelo = df.drop(columns=COLS_ELIMINAR)
