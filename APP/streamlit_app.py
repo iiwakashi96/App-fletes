@@ -140,7 +140,11 @@ if enviar:
 
     with st.container(border=True):
         st.metric("Precio típico", pesos(tipico))
-        st.write(f"**Rango habitual:** {pesos(bajo)} a {pesos(alto)}")
+        # En Markdown, $...$ delimita una formula matematica. Sin escapar, los
+        # dos signos de peso se emparejan y el rango se renderiza como LaTeX,
+        # perdiendo los simbolos. st.metric no sufre esto porque no usa Markdown.
+        rango = f"{pesos(bajo)} a {pesos(alto)}".replace("$", "\\$")
+        st.write(f"**Rango habitual:** {rango}")
         st.caption(
             "Pedir menos del extremo bajo es quedarse corto frente al mercado; "
             "pedir más del alto es salirse de lo que se pagó en viajes como este."
