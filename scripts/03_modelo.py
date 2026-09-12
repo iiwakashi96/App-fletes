@@ -302,3 +302,34 @@ cuanto_cobrar(**{c: ejemplo[c] for c in VARS_NUM + VARS_CAT})
 print(f"  Se pago en realidad: {ejemplo.valorespagados:,.0f} pesos")
 
 # %%
+
+
+#%%
+# ============================================================
+# GUARDAR EL MODELO PARA LA APP
+# ============================================================
+# Sin esto, cuanto_cobrar() solo existe mientras este script esta corriendo.
+# Al guardarlo en disco, la aplicacion de la carpeta APP lo carga en un
+# segundo y puede consultarlo sin volver a entrenar nada.
+#
+# Se guardan los tres arboles (los tres cuantiles) y ademas la lista de
+# valores validos de cada variable categorica, para que la app pueda armar
+# los menus desplegables y el usuario no pueda escribir un valor inexistente.
+import joblib
+
+paquete = {
+    "arboles": arboles,
+    "cuantiles": CUANTILES,
+    "vars_num": VARS_NUM,
+    "vars_cat": VARS_CAT,
+    "categorias": {c: list(df[c].cat.categories) for c in VARS_CAT},
+    "n_entrenamiento": len(df),
+    "error_medio_pct": round(err_arbol, 1),
+    "cobertura_rango_pct": round(float(dentro.mean() * 100), 1),
+}
+
+RUTA_MODELO_APP = CARPETA_OUTPUT / "modelo_fletes.joblib"
+joblib.dump(paquete, RUTA_MODELO_APP)
+print(f"Modelo guardado: {RUTA_MODELO_APP}")
+print(f"  {len(paquete['arboles'])} arboles | {len(paquete['vars_cat'])} categoricas | "
+      f"entrenado con {paquete['n_entrenamiento']:,} viajes")
