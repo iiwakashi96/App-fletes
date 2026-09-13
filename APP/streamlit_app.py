@@ -61,18 +61,28 @@ def pesos(valor):
     return "$" + f"{valor:,.0f}".replace(",", ".")
 
 
-@st.cache_data
 def cargar_rutas():
+    """Envoltura SIN cache: comprueba que los archivos existan antes de leer.
+
+    El chequeo va aqui y no dentro de la funcion cacheada a proposito. Si el
+    @st.cache_data envolviera tambien el fallo, un None quedaria guardado y la
+    app seguiria sin rutas aunque los archivos llegaran despues, hasta que
+    alguien la reiniciara. Paso exactamente eso al desplegar."""
+    carpeta = Path(__file__).resolve().parent
+    if not ((carpeta / "municipios.parquet").exists()
+            and (carpeta / "rutas.parquet").exists()):
+        return None, None
+    return _leer_rutas()
+
+
+@st.cache_data
+def _leer_rutas():
     """Tabla de municipios y distancias, construida por scripts/02 desde el
     propio RNDC. No se usa Google Maps: su API pide tarjeta de crédito y, más
     importante, daría SU distancia y no la que el modelo aprendió."""
     carpeta = Path(__file__).resolve().parent
-    f_mun, f_rut = carpeta / "municipios.parquet", carpeta / "rutas.parquet"
-    if not (f_mun.exists() and f_rut.exists()):
-        return None, None
-
-    mun = pd.read_parquet(f_mun).sort_values("nombre")
-    rut = pd.read_parquet(f_rut)
+    mun = pd.read_parquet(carpeta / "municipios.parquet").sort_values("nombre")
+    rut = pd.read_parquet(carpeta / "rutas.parquet")
     # cod origen + cod destino -> kilómetros, para buscar en un solo paso
     distancias = {
         (o, d): int(k)
