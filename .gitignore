@@ -2,3 +2,8 @@ output/
 raw/
 __pycache__/
 *.parquet
+
+# Excepcion: las tablas que la app necesita para funcionar SI van al
+# repositorio. Son 60 KB entre las dos y sin ellas la version desplegada
+# pierde el autocompletado de municipio, departamento y distancia.
+!APP/*.parquet
