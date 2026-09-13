@@ -161,62 +161,88 @@ def indice(lista, valor, por_defecto=0):
 # ------------------------------------------------------------
 # Datos del viaje
 # ------------------------------------------------------------
-with st.form("viaje"):
-    st.subheader("Datos del viaje")
+# Sin st.form a proposito. Dentro de un formulario los widgets no reaccionan
+# hasta enviar, y aqui hacen falta dos cosas inmediatas: que al cambiar la
+# unidad se convierta el peso, y que la ruta complete los campos de abajo.
+# El calculo igual solo corre al pulsar el boton, asi que no se recalcula de
+# mas; el resultado se guarda en session_state para que no desaparezca en el
+# siguiente refresco.
+st.subheader("Datos del viaje")
 
-    with st.container(horizontal=True):
-        km = st.number_input(
-            ETIQUETAS["kilometros"], min_value=1, max_value=5000, step=10,
-            value=int(km_ruta) if km_ruta else 500,
-            key=f"km_{clave}", help="Se completa solo si escogiste la ruta arriba",
-        )
-        kg = st.number_input(
-            ETIQUETAS["kilogramos"], min_value=1, max_value=60000, value=15000, step=500,
-            help="Peso de la carga en kilogramos",
-        )
-
-    operacion = st.segmented_control(
-        ETIQUETAS["operaciontransporte"], CAT["operaciontransporte"],
-        # segmented_control recibe el VALOR por defecto, no un indice.
-        default=("General" if "General" in CAT["operaciontransporte"]
-                 else CAT["operaciontransporte"][0]),
+with st.container(horizontal=True):
+    km = st.number_input(
+        "Distancia (km)", min_value=1, max_value=5000, step=10,
+        value=int(km_ruta) if km_ruta else 500,
+        key=f"km_{clave}", help="Se completa solo si escogiste la ruta arriba",
     )
 
-    vehiculo = st.selectbox(ETIQUETAS["config_vehiculo"], CAT["config_vehiculo"])
+    # --- Peso, con unidad a elegir ---
+    # El valor vive en session_state bajo la clave del widget. Al cambiar de
+    # unidad se reescribe ANTES de dibujarlo, asi el numero se convierte en
+    # vez de quedarse igual con otro significado.
+    if "peso_valor" not in st.session_state:
+        st.session_state.peso_valor = 15000.0
+        st.session_state.unidad_previa = "kg"
 
-    with st.container(horizontal=True):
-        origen = st.selectbox(
-            ETIQUETAS["departamentoorigen"], CAT["departamentoorigen"],
-            index=indice(CAT["departamentoorigen"], dpto_origen),
-            key=f"do_{clave}",
-        )
-        destino = st.selectbox(
-            ETIQUETAS["departamentodestino"], CAT["departamentodestino"],
-            index=indice(CAT["departamentodestino"], dpto_destino),
-            key=f"dd_{clave}",
-        )
+    unidad = st.segmented_control(
+        "Unidad del peso", ["kg", "toneladas"], default="kg", key="unidad_peso",
+    ) or "kg"
 
-    with st.container(horizontal=True):
-        # Arranca en "Carga Normal" (la gran mayoría de los viajes). Sin esto
-        # abre en ".", un valor basura del 0,1% de los datos.
-        naturaleza = st.selectbox(
-            ETIQUETAS["naturalezacarga"], CAT["naturalezacarga"],
-            index=indice(CAT["naturalezacarga"], "Carga Normal"),
-        )
-        mercancia = st.selectbox(ETIQUETAS["categoria_mercancia"], CAT["categoria_mercancia"])
+    if unidad != st.session_state.unidad_previa:
+        if unidad == "toneladas":
+            st.session_state.peso_valor = st.session_state.peso_valor / 1000
+        else:
+            st.session_state.peso_valor = st.session_state.peso_valor * 1000
+        st.session_state.unidad_previa = unidad
 
-    enviar = st.form_submit_button("Calcular", icon=":material/calculate:", type="primary")
+    if unidad == "toneladas":
+        # Dos decimales, no tres: con %.3f un valor de 15 toneladas se dibuja
+        # como 15.000, que en Colombia se lee como quince mil. Justo la
+        # confusion que este selector viene a evitar.
+        peso = st.number_input("Peso de la carga (toneladas)", min_value=0.1,
+                               max_value=60.0, step=0.5, format="%.2f", key="peso_valor")
+        kg = peso * 1000
+    else:
+        peso = st.number_input("Peso de la carga (kg)", min_value=1.0,
+                               max_value=60000.0, step=500.0, format="%.0f", key="peso_valor")
+        kg = peso
 
+st.caption(f"El modelo trabaja en kilogramos: se enviaran **{kg:,.0f} kg**.".replace(",", "."))
 
-# ------------------------------------------------------------
-# Resultado
-# ------------------------------------------------------------
-if enviar:
+operacion = st.segmented_control(
+    ETIQUETAS["operaciontransporte"], CAT["operaciontransporte"],
+    # segmented_control recibe el VALOR por defecto, no un indice.
+    default=("General" if "General" in CAT["operaciontransporte"]
+             else CAT["operaciontransporte"][0]),
+)
+
+vehiculo = st.selectbox(ETIQUETAS["config_vehiculo"], CAT["config_vehiculo"])
+
+with st.container(horizontal=True):
+    origen = st.selectbox(
+        ETIQUETAS["departamentoorigen"], CAT["departamentoorigen"],
+        index=indice(CAT["departamentoorigen"], dpto_origen), key=f"do_{clave}",
+    )
+    destino = st.selectbox(
+        ETIQUETAS["departamentodestino"], CAT["departamentodestino"],
+        index=indice(CAT["departamentodestino"], dpto_destino), key=f"dd_{clave}",
+    )
+
+with st.container(horizontal=True):
+    # Arranca en "Carga Normal" (la gran mayoria de los viajes). Sin esto abre
+    # en ".", un valor basura del 0,1% de los datos.
+    naturaleza = st.selectbox(
+        ETIQUETAS["naturalezacarga"], CAT["naturalezacarga"],
+        index=indice(CAT["naturalezacarga"], "Carga Normal"),
+    )
+    mercancia = st.selectbox(ETIQUETAS["categoria_mercancia"], CAT["categoria_mercancia"])
+
+if st.button("Calcular", icon=":material/calculate:", type="primary"):
     if operacion is None:
         st.warning("Escoge un tipo de operación.", icon=":material/warning:")
         st.stop()
 
-    datos = {
+    st.session_state.resultado = estimar(paquete, {
         "kilometros": km,
         "kilogramos": kg,
         "config_vehiculo": vehiculo,
@@ -225,33 +251,50 @@ if enviar:
         "departamentodestino": destino,
         "naturalezacarga": naturaleza,
         "categoria_mercancia": mercancia,
-    }
+    })
+    st.session_state.datos_usados = {"kilometros": km, "kilogramos": kg}
 
-    r = estimar(paquete, datos)
+
+# ------------------------------------------------------------
+# Resultado
+# ------------------------------------------------------------
+# Se lee de session_state y no de la pulsacion del boton: asi sobrevive a los
+# refrescos que provoca cualquier otro widget de la pagina.
+if "resultado" in st.session_state:
+    r = st.session_state.resultado
+    usados = st.session_state.datos_usados
     bajo, tipico, alto = r[0.10], r[0.50], r[0.90]
 
     with st.container(border=True):
         st.metric("Precio típico", pesos(tipico))
-        # En Markdown, $...$ delimita una fórmula. Sin escapar, los dos signos
+        # En Markdown, $...$ delimita una formula. Sin escapar, los dos signos
         # de peso se emparejan y el rango se renderiza como LaTeX, perdiendo
-        # los símbolos. st.metric no sufre esto porque no usa Markdown.
+        # los simbolos. st.metric no sufre esto porque no usa Markdown.
         rango = f"{pesos(bajo)} a {pesos(alto)}".replace("$", "\\$")
         st.write(f"**Rango habitual:** {rango}")
+        # Los numeros se formatean por separado: aplicar un replace sobre la
+        # frase completa tambien cambiaria la puntuacion del texto.
+        _km = f"{usados['kilometros']:,.0f}".replace(",", ".")
+        _kg = f"{usados['kilogramos']:,.0f}".replace(",", ".")
+        _ton = f"{usados['kilogramos'] / 1000:,.2f}".replace(",", "@").replace(".", ",").replace("@", ".")
         st.caption(
+            f"Para {_km} km y {_kg} kg ({_ton} toneladas). "
             "Pedir menos del extremo bajo es quedarse corto frente al mercado; "
             "pedir más del alto es salirse de lo que se pagó en viajes como este."
         )
 
     fuera = [
-        f"{ETIQUETAS[c].lower()} ({valor:,.0f}) está fuera del rango observado "
+        f"{nombre} ({valor:,.0f}) está fuera del rango observado "
         f"({lim[0]:,} a {lim[1]:,})"
-        for c, valor, lim in [("kilometros", km, LIMITES["kilometros"]),
-                              ("kilogramos", kg, LIMITES["kilogramos"])]
+        for nombre, valor, lim in [
+            ("la distancia", usados["kilometros"], LIMITES["kilometros"]),
+            ("el peso", usados["kilogramos"], LIMITES["kilogramos"]),
+        ]
         if not (lim[0] <= valor <= lim[1])
     ]
     if fuera:
         st.warning(
-            "La " + "; la ".join(fuera) + ". La estimación no es confiable.",
+            " y ".join(fuera).capitalize() + ". La estimación no es confiable.",
             icon=":material/warning:",
         )
 
