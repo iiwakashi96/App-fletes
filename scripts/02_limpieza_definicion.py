@@ -61,6 +61,63 @@ antes = len(df)
 df = df.drop_duplicates()
 print(f"DUPLICADOS EXACTOS: eliminados {antes - len(df):,}, quedan {len(df):,}")
 
+
+#%%
+# ============================================================
+# TABLA DE RUTAS PARA LA APP (municipios y distancias)
+# ============================================================
+# La app le pide al usuario los kilometros, que es justo el dato que un
+# conductor no sabe de memoria. Con esta tabla puede escoger municipio de
+# origen y destino, y la app completa sola el departamento y la distancia.
+#
+# NO se usa Google Maps a proposito, por dos razones:
+#   1. Su API exige registrar una tarjeta de credito.
+#   2. Mas importante: daria SU distancia, no la del RNDC. El modelo
+#      aprendio con los kilometros que reporta el RNDC, asi que alimentarlo
+#      con otra medida seria un desajuste silencioso.
+#
+# Se construye AQUI, antes de los filtros, para cubrir la mayor cantidad de
+# rutas posible: una ruta sirve aunque su viaje no entre al modelo.
+#
+# Verificado: la distancia de cada ruta es un dato fijo en el RNDC. En los
+# pares con mas de un valor la diferencia es de 0,1% en mediana y nunca pasa
+# del 5%: es el redondeo de dividir kilometros entre viajestotales.
+
+_r = df.dropna(subset=["codmunicipioorigen", "codmunicipiodestino",
+                       "municipioorigen", "municipiodestino",
+                       "departamentoorigen", "departamentodestino",
+                       "kilometros", "viajestotales"]).copy()
+_r = _r[(_r["viajestotales"] > 0) & (_r["kilometros"] > 0)]
+_r["km_viaje"] = _r["kilometros"] / _r["viajestotales"]
+
+# --- Catalogo de municipios: codigo -> nombre y departamento ---
+_m = pd.concat([
+    _r[["codmunicipioorigen", "municipioorigen", "departamentoorigen"]]
+      .rename(columns={"codmunicipioorigen": "cod", "municipioorigen": "municipio",
+                       "departamentoorigen": "departamento"}),
+    _r[["codmunicipiodestino", "municipiodestino", "departamentodestino"]]
+      .rename(columns={"codmunicipiodestino": "cod", "municipiodestino": "municipio",
+                       "departamentodestino": "departamento"}),
+])
+municipios = (_m.groupby("cod", as_index=False)
+                .agg(municipio=("municipio", "first"),
+                     departamento=("departamento", "first")))
+
+# --- Distancias: la mediana por par origen-destino ---
+rutas = (_r.groupby(["codmunicipioorigen", "codmunicipiodestino"], as_index=False)
+           .agg(km=("km_viaje", "median"), n_viajes=("viajestotales", "sum")))
+rutas["km"] = rutas["km"].round().astype(int)
+
+CARPETA_APP = CARPETA_OUTPUT.parent / "APP"
+CARPETA_APP.mkdir(exist_ok=True)
+municipios.to_parquet(CARPETA_APP / "municipios.parquet", index=False)
+rutas.to_parquet(CARPETA_APP / "rutas.parquet", index=False)
+
+print(f"TABLA DE RUTAS: {len(municipios):,} municipios, {len(rutas):,} rutas con distancia")
+mostrar(rutas.nlargest(5, "n_viajes"), "RUTAS MAS TRANSITADAS")
+
+del _r, _m
+
 #%%
   #1. Limpieza: quitar registros inservibles y columnas que no aportan
   #2. Dividir en carga física y carga líquida

@@ -61,6 +61,26 @@ def pesos(valor):
     return "$" + f"{valor:,.0f}".replace(",", ".")
 
 
+@st.cache_data
+def cargar_rutas():
+    """Tabla de municipios y distancias, construida por scripts/02 desde el
+    propio RNDC. No se usa Google Maps: su API pide tarjeta de crédito y, más
+    importante, daría SU distancia y no la que el modelo aprendió."""
+    carpeta = Path(__file__).resolve().parent
+    f_mun, f_rut = carpeta / "municipios.parquet", carpeta / "rutas.parquet"
+    if not (f_mun.exists() and f_rut.exists()):
+        return None, None
+
+    mun = pd.read_parquet(f_mun).sort_values("municipio")
+    rut = pd.read_parquet(f_rut)
+    # cod origen + cod destino -> kilómetros, para buscar en un solo paso
+    distancias = {
+        (o, d): int(k)
+        for o, d, k in zip(rut.codmunicipioorigen, rut.codmunicipiodestino, rut.km)
+    }
+    return mun, distancias
+
+
 # ============================================================
 # La página
 # ============================================================
@@ -81,52 +101,108 @@ if paquete is None:
     st.stop()
 
 CAT = paquete["categorias"]
+municipios, distancias = cargar_rutas()
 
-# Un formulario agrupa los ocho campos y solo calcula al enviar, en vez de
-# recalcular cada vez que el usuario toca un desplegable.
+# ------------------------------------------------------------
+# Ruta (opcional): completa departamentos y distancia
+# ------------------------------------------------------------
+# Va FUERA del formulario a propósito. Dentro de un st.form los widgets no
+# reaccionan hasta que se envía, y aquí se necesita que al escoger los
+# municipios se actualicen de inmediato los campos de abajo.
+km_ruta = dpto_origen = dpto_destino = None
+
+if municipios is not None:
+    with st.container(border=True):
+        st.markdown("**¿Sabes los municipios?** Completo el resto.")
+
+        nombres = municipios["municipio"].tolist()
+        with st.container(horizontal=True):
+            m_origen = st.selectbox("Municipio de origen", nombres, index=None,
+                                    placeholder="Escribe para buscar")
+            m_destino = st.selectbox("Municipio de destino", nombres, index=None,
+                                     placeholder="Escribe para buscar")
+
+        if m_origen and m_destino:
+            fila_o = municipios[municipios.municipio == m_origen].iloc[0]
+            fila_d = municipios[municipios.municipio == m_destino].iloc[0]
+            dpto_origen, dpto_destino = fila_o.departamento, fila_d.departamento
+            km_ruta = distancias.get((fila_o.cod, fila_d.cod))
+
+            if km_ruta:
+                st.success(
+                    f"{km_ruta:,} km · {dpto_origen} → {dpto_destino}".replace(",", "."),
+                    icon=":material/route:",
+                )
+            else:
+                st.info(
+                    "Esa ruta no aparece en el RNDC, así que no tengo su distancia. "
+                    "Los departamentos sí quedaron; escribe los kilómetros abajo.",
+                    icon=":material/info:",
+                )
+
+# La clave incluye la ruta: al cambiarla, Streamlit recrea los widgets de
+# abajo con los valores nuevos en vez de conservar los que el usuario veía.
+clave = f"{m_origen}_{m_destino}" if municipios is not None else "sin_ruta"
+
+
+def indice(lista, valor, por_defecto=0):
+    """Posición de un valor en la lista de categorías, o el de por defecto."""
+    return lista.index(valor) if valor in lista else por_defecto
+
+
+# ------------------------------------------------------------
+# Datos del viaje
+# ------------------------------------------------------------
 with st.form("viaje"):
     st.subheader("Datos del viaje")
 
     with st.container(horizontal=True):
         km = st.number_input(
-            ETIQUETAS["kilometros"], min_value=1, max_value=5000, value=500, step=10,
-            help="Kilómetros recorridos",
+            ETIQUETAS["kilometros"], min_value=1, max_value=5000, step=10,
+            value=int(km_ruta) if km_ruta else 500,
+            key=f"km_{clave}", help="Se completa solo si escogiste la ruta arriba",
         )
         kg = st.number_input(
             ETIQUETAS["kilogramos"], min_value=1, max_value=60000, value=15000, step=500,
             help="Peso de la carga en kilogramos",
         )
 
-    # Cuatro opciones cortas: se muestran todas, sin desplegar.
     operacion = st.segmented_control(
-        ETIQUETAS["operaciontransporte"],
-        CAT["operaciontransporte"],
-        default=CAT["operaciontransporte"][2],
+        ETIQUETAS["operaciontransporte"], CAT["operaciontransporte"],
+        # segmented_control recibe el VALOR por defecto, no un indice.
+        default=("General" if "General" in CAT["operaciontransporte"]
+                 else CAT["operaciontransporte"][0]),
     )
 
     vehiculo = st.selectbox(ETIQUETAS["config_vehiculo"], CAT["config_vehiculo"])
 
     with st.container(horizontal=True):
-        origen = st.selectbox(ETIQUETAS["departamentoorigen"], CAT["departamentoorigen"])
-        destino = st.selectbox(ETIQUETAS["departamentodestino"], CAT["departamentodestino"])
+        origen = st.selectbox(
+            ETIQUETAS["departamentoorigen"], CAT["departamentoorigen"],
+            index=indice(CAT["departamentoorigen"], dpto_origen),
+            key=f"do_{clave}",
+        )
+        destino = st.selectbox(
+            ETIQUETAS["departamentodestino"], CAT["departamentodestino"],
+            index=indice(CAT["departamentodestino"], dpto_destino),
+            key=f"dd_{clave}",
+        )
 
     with st.container(horizontal=True):
-        # Arranca en "Carga Normal" (el 90% de los viajes). Si no se pone el
-        # index, el desplegable abre en ".", un valor basura del 0,1% de los datos
-        # que quedo en la base y se ve mal como opcion por defecto.
+        # Arranca en "Carga Normal" (la gran mayoría de los viajes). Sin esto
+        # abre en ".", un valor basura del 0,1% de los datos.
         naturaleza = st.selectbox(
-            ETIQUETAS["naturalezacarga"],
-            CAT["naturalezacarga"],
-            index=(CAT["naturalezacarga"].index("Carga Normal")
-                   if "Carga Normal" in CAT["naturalezacarga"] else 0),
+            ETIQUETAS["naturalezacarga"], CAT["naturalezacarga"],
+            index=indice(CAT["naturalezacarga"], "Carga Normal"),
         )
         mercancia = st.selectbox(ETIQUETAS["categoria_mercancia"], CAT["categoria_mercancia"])
 
-    enviar = st.form_submit_button(
-        "Calcular", icon=":material/calculate:", type="primary"
-    )
+    enviar = st.form_submit_button("Calcular", icon=":material/calculate:", type="primary")
 
 
+# ------------------------------------------------------------
+# Resultado
+# ------------------------------------------------------------
 if enviar:
     if operacion is None:
         st.warning("Escoge un tipo de operación.", icon=":material/warning:")
@@ -148,9 +224,9 @@ if enviar:
 
     with st.container(border=True):
         st.metric("Precio típico", pesos(tipico))
-        # En Markdown, $...$ delimita una formula matematica. Sin escapar, los
-        # dos signos de peso se emparejan y el rango se renderiza como LaTeX,
-        # perdiendo los simbolos. st.metric no sufre esto porque no usa Markdown.
+        # En Markdown, $...$ delimita una fórmula. Sin escapar, los dos signos
+        # de peso se emparejan y el rango se renderiza como LaTeX, perdiendo
+        # los símbolos. st.metric no sufre esto porque no usa Markdown.
         rango = f"{pesos(bajo)} a {pesos(alto)}".replace("$", "\\$")
         st.write(f"**Rango habitual:** {rango}")
         st.caption(
@@ -158,7 +234,6 @@ if enviar:
             "pedir más del alto es salirse de lo que se pagó en viajes como este."
         )
 
-    # Aviso si el viaje se sale del rango con el que se entrenó el modelo.
     fuera = [
         f"{ETIQUETAS[c].lower()} ({valor:,.0f}) está fuera del rango observado "
         f"({lim[0]:,} a {lim[1]:,})"
@@ -174,10 +249,18 @@ if enviar:
 
 st.divider()
 
+nota_rutas = ""
+if municipios is not None:
+    nota_rutas = (
+        f" Las distancias salen de {len(distancias):,} rutas registradas en el RNDC "
+        f"entre {len(municipios):,} municipios; si tu ruta no está, escribe los "
+        "kilómetros a mano."
+    )
+
 st.caption(
     f"Modelo entrenado con {paquete['n_entrenamiento']:,} viajes de 2015. "
     f"Error medio {paquete['error_medio_pct']}%: el rango contiene el precio real "
-    f"el {paquete['cobertura_rango_pct']}% de las veces. "
-    "Los precios **no están ajustados por inflación**, así que sirven para comparar "
+    f"el {paquete['cobertura_rango_pct']}% de las veces." + nota_rutas +
+    " Los precios **no están ajustados por inflación**, así que sirven para comparar "
     "entre viajes, no como tarifa de hoy."
 )
