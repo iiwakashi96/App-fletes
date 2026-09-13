@@ -71,7 +71,7 @@ def cargar_rutas():
     if not (f_mun.exists() and f_rut.exists()):
         return None, None
 
-    mun = pd.read_parquet(f_mun).sort_values("municipio")
+    mun = pd.read_parquet(f_mun).sort_values("nombre")
     rut = pd.read_parquet(f_rut)
     # cod origen + cod destino -> kilómetros, para buscar en un solo paso
     distancias = {
@@ -115,22 +115,30 @@ if municipios is not None:
     with st.container(border=True):
         st.markdown("**¿Sabes los municipios?** Completo el resto.")
 
-        nombres = municipios["municipio"].tolist()
+        # Las opciones son los CODIGOS de municipio; format_func decide que
+        # se lee en pantalla. Asi el nombre es solo presentacion y la llave
+        # real sigue siendo el codigo, que es lo que busca la tabla de rutas.
+        codigos = municipios["cod"].tolist()
+        etiqueta = dict(zip(municipios["cod"], municipios["nombre"]))
+
         with st.container(horizontal=True):
-            m_origen = st.selectbox("Municipio de origen", nombres, index=None,
+            m_origen = st.selectbox("Municipio de origen", codigos, index=None,
+                                    format_func=etiqueta.get,
                                     placeholder="Escribe para buscar")
-            m_destino = st.selectbox("Municipio de destino", nombres, index=None,
+            m_destino = st.selectbox("Municipio de destino", codigos, index=None,
+                                     format_func=etiqueta.get,
                                      placeholder="Escribe para buscar")
 
         if m_origen and m_destino:
-            fila_o = municipios[municipios.municipio == m_origen].iloc[0]
-            fila_d = municipios[municipios.municipio == m_destino].iloc[0]
+            fila_o = municipios[municipios.cod == m_origen].iloc[0]
+            fila_d = municipios[municipios.cod == m_destino].iloc[0]
             dpto_origen, dpto_destino = fila_o.departamento, fila_d.departamento
-            km_ruta = distancias.get((fila_o.cod, fila_d.cod))
+            km_ruta = distancias.get((m_origen, m_destino))
 
             if km_ruta:
                 st.success(
-                    f"{km_ruta:,} km · {dpto_origen} → {dpto_destino}".replace(",", "."),
+                    f"{etiqueta[m_origen]} → {etiqueta[m_destino]}:  "
+                    f"{km_ruta:,} km".replace(",", "."),
                     icon=":material/route:",
                 )
             else:

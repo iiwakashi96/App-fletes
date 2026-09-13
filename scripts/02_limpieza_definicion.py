@@ -103,6 +103,70 @@ municipios = (_m.groupby("cod", as_index=False)
                 .agg(municipio=("municipio", "first"),
                      departamento=("departamento", "first")))
 
+# --- Nombre para mostrar en la app ---
+# En el RNDC el municipio viene con el departamento pegado y todo en
+# mayusculas: "MEDELLIN ANTIOQUIA". En un desplegable donde el departamento
+# ya se muestra aparte queda redundante y pesado de leer.
+#
+# Se quita el departamento del final (verificado: el 100% de los 399 nombres
+# termina con el suyo) y se pasa a tipo titulo. Los codigos siguen siendo la
+# llave real: el nombre es solo presentacion.
+
+# En toponimia solo "de", "del" y "y" van en minuscula. "La", "Los" y "El"
+# suelen ser parte del nombre propio (La Dorada, Maria La Baja, El Carmen).
+MINUSCULAS = {"de", "del", "y"}
+
+def _con_mayuscula(palabra):
+    """Pone en mayuscula la primera LETRA, aunque venga tras un signo.
+    El .capitalize() de Python no sirve aqui: con "(tamana)" no hace nada,
+    porque el primer caracter es un parentesis y no una letra."""
+    for i, c in enumerate(palabra):
+        if c.isalpha():
+            return palabra[:i] + c.upper() + palabra[i + 1:]
+    return palabra
+
+
+def a_titulo(texto):
+    """MEDELLIN -> Medellin ; SANTA ROSA DE CABAL -> Santa Rosa de Cabal"""
+    palabras = str(texto).strip().lower().split()
+    salida = []
+    for i, palabra in enumerate(palabras):
+        if "." in palabra and len(palabra.replace(".", "")) <= 2:
+            salida.append(palabra.upper())        # iniciales tipo "D." "C."
+        elif i > 0 and palabra in MINUSCULAS:
+            salida.append(palabra)
+        else:
+            salida.append(_con_mayuscula(palabra))
+    return " ".join(salida)
+
+def sin_departamento(nombre, departamento):
+    n, d = str(nombre).strip(), str(departamento).strip()
+    return n[:-len(d)].strip() if n.endswith(d) else n
+
+municipios["corto"] = [sin_departamento(n, d)
+                       for n, d in zip(municipios.municipio, municipios.departamento)]
+
+# Solo 4 de los 399 chocan al quitar el departamento (Barbosa, Ricaurte,
+# Rionegro y Santa Rosa de Cabal). A esos, y solo a esos, se les pone el
+# departamento entre parentesis.
+_choca = municipios["corto"].duplicated(keep=False)
+municipios["nombre"] = [
+    f"{a_titulo(c)} ({a_titulo(d)})" if choca else a_titulo(c)
+    for c, d, choca in zip(municipios.corto, municipios.departamento, _choca)
+]
+
+# Si aun asi se repite (mismo nombre Y mismo departamento, con codigos
+# distintos), se distingue por codigo para que el desplegable nunca tenga
+# dos opciones identicas.
+_choca2 = municipios["nombre"].duplicated(keep=False)
+municipios.loc[_choca2, "nombre"] = [
+    f"{n} [{c}]" for n, c in zip(municipios.loc[_choca2, "nombre"],
+                                 municipios.loc[_choca2, "cod"])
+]
+
+assert municipios["nombre"].is_unique, "Hay nombres de municipio repetidos"
+municipios = municipios.drop(columns="corto").sort_values("nombre")
+
 # --- Distancias: la mediana por par origen-destino ---
 rutas = (_r.groupby(["codmunicipioorigen", "codmunicipiodestino"], as_index=False)
            .agg(km=("km_viaje", "median"), n_viajes=("viajestotales", "sum")))
