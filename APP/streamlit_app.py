@@ -207,7 +207,6 @@ with st.container(horizontal=True):
                                max_value=60000.0, step=500.0, format="%.0f", key="peso_valor")
         kg = peso
 
-st.caption(f"El modelo trabaja en kilogramos: se enviaran **{kg:,.0f} kg**.".replace(",", "."))
 
 operacion = st.segmented_control(
     ETIQUETAS["operaciontransporte"], CAT["operaciontransporte"],
