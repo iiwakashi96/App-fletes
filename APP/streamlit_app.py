@@ -111,7 +111,15 @@ with st.form("viaje"):
         destino = st.selectbox(ETIQUETAS["departamentodestino"], CAT["departamentodestino"])
 
     with st.container(horizontal=True):
-        naturaleza = st.selectbox(ETIQUETAS["naturalezacarga"], CAT["naturalezacarga"])
+        # Arranca en "Carga Normal" (el 90% de los viajes). Si no se pone el
+        # index, el desplegable abre en ".", un valor basura del 0,1% de los datos
+        # que quedo en la base y se ve mal como opcion por defecto.
+        naturaleza = st.selectbox(
+            ETIQUETAS["naturalezacarga"],
+            CAT["naturalezacarga"],
+            index=(CAT["naturalezacarga"].index("Carga Normal")
+                   if "Carga Normal" in CAT["naturalezacarga"] else 0),
+        )
         mercancia = st.selectbox(ETIQUETAS["categoria_mercancia"], CAT["categoria_mercancia"])
 
     enviar = st.form_submit_button(
