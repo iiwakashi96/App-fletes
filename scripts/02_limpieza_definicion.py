@@ -18,8 +18,13 @@ from pathlib import Path
 
 try:
     _CARPETA_SCRIPTS = Path(__file__).resolve().parent
-except NameError:
-    _CARPETA_SCRIPTS = Path("C:/Users/f/Downloads/ADD 1/PIPELINE - PRECIOS VIAJES/scripts")
+except NameError:            # al correr celdas #%% no existe __file__
+    # Se busca utils.py partiendo de la carpeta de trabajo, sin nombres fijos.
+    _CARPETA_SCRIPTS = next(
+        (c for c in (Path.cwd() / "scripts", Path.cwd(), Path.cwd().parent / "scripts")
+         if (c / "utils.py").exists()),
+        Path.cwd(),
+    )
 if str(_CARPETA_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_CARPETA_SCRIPTS))
 

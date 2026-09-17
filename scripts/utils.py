@@ -21,7 +21,13 @@ from pathlib import Path
 # ============================================================
 # RUTAS DEL PROYECTO
 # ============================================================
-CARPETA_OUTPUT = Path(r"C:\Users\f\Downloads\ADD 1\PIPELINE - PRECIOS VIAJES\output")
+# Las rutas se deducen de donde esta ESTE archivo, no se escriben a mano.
+# utils.py siempre se importa como modulo, asi que __file__ siempre existe.
+# El proyecto ya se movio dos veces (de Descargas a Google Drive, y antes se
+# renombro la carpeta); con una ruta fija, cada movida rompia todo y ademas
+# el mkdir de abajo recreaba en silencio la carpeta vieja, vacia.
+CARPETA_PROYECTO = Path(__file__).resolve().parent.parent
+CARPETA_OUTPUT = CARPETA_PROYECTO / "output"
 CARPETA_OUTPUT.mkdir(parents=True, exist_ok=True)   # la crea si no existe
 
 RUTA_TIPIFICADO = CARPETA_OUTPUT / "rndc_tipificado.parquet"   # sale del script 01
